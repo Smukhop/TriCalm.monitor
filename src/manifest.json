@@ -1,0 +1,124 @@
+{
+  "modules": [
+    {
+      "id": "harness.js",
+      "path": "surface/harness.js"
+    },
+    {
+      "id": "kurama.data.js",
+      "path": "surface/kurama.data.js"
+    },
+    {
+      "id": "kurama.core.js",
+      "path": "surface/kurama.core.js"
+    },
+    {
+      "id": "kurama.registry.js",
+      "path": "surface/kurama.registry.js"
+    },
+    {
+      "id": "kurama.world.js",
+      "path": "surface/kurama.world.js"
+    },
+    {
+      "id": "kurama.characters.js",
+      "path": "surface/kurama.characters.js"
+    },
+    {
+      "id": "kurama.systems.js",
+      "path": "surface/kurama.systems.js"
+    },
+    {
+      "id": "kurama.paths.js",
+      "path": "surface/kurama.paths.js"
+    },
+    {
+      "id": "env.hiddenleaf.js",
+      "path": "surface/env.hiddenleaf.js"
+    },
+    {
+      "id": "env.capsulecorp.js",
+      "path": "surface/env.capsulecorp.js"
+    },
+    {
+      "id": "env.skillforge.js",
+      "path": "surface/env.skillforge.js"
+    },
+    {
+      "id": "env.observatory.js",
+      "path": "surface/env.observatory.js"
+    },
+    {
+      "id": "env.neonarcade.js",
+      "path": "surface/env.neonarcade.js"
+    },
+    {
+      "id": "env.elbaf.js",
+      "path": "surface/env.elbaf.js"
+    },
+    {
+      "id": "env.boardwalk.js",
+      "path": "surface/env.boardwalk.js"
+    },
+    {
+      "id": "env.sakura.js",
+      "path": "surface/env.sakura.js"
+    },
+    {
+      "id": "env.festival.js",
+      "path": "surface/env.festival.js"
+    },
+    {
+      "id": "env.monastery.js",
+      "path": "surface/env.monastery.js"
+    },
+    {
+      "id": "env.skydocks.js",
+      "path": "surface/env.skydocks.js"
+    },
+    {
+      "id": "kurama.triforge.js",
+      "path": "surface/kurama.triforge.js"
+    },
+    {
+      "id": "kurama.main.js",
+      "path": "surface/kurama.main.js"
+    },
+    {
+      "id": "kurama.realms.js",
+      "path": "surface/kurama.realms.js"
+    },
+    {
+      "id": "kurama.social.js",
+      "path": "surface/kurama.social.js"
+    },
+    {
+      "id": "kurama.verses.js",
+      "path": "surface/kurama.verses.js"
+    },
+    {
+      "id": "kurama.planets.js",
+      "path": "surface/kurama.planets.js"
+    },
+    {
+      "id": "kurama.wormhole.js",
+      "path": "surface/kurama.wormhole.js"
+    },
+    {
+      "id": "kurama.loqi.js",
+      "path": "surface/kurama.loqi.js"
+    },
+    {
+      "id": "kurama.fidelity.js",
+      "path": "surface/kurama.fidelity.js"
+    },
+    {
+      "id": "kurama.aeris.upgrade.js",
+      "path": "surface/kurama.aeris.upgrade.js"
+    },
+    {
+      "id": "kurama.storyboard.js",
+      "path": "surface/kurama.storyboard.js"
+    }
+  ]
+}

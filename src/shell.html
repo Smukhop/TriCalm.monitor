@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover"/>
+<meta name="theme-color" content="#05060F"/>
+<title>TriFable · Tri-Fabled Planetary Realms</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --hot:#FFE9CC; --gold:#FFB068; --ember:#F2843D; --crimson:#F2554B;
+  --soul:#9B7CF6; --frost:#CFE3FF; --cream:#F0E0D2; --teal:#3DC9C2;
+  --void:#05060F; --void2:#0A0506; --ink:rgba(8,6,14,0.62);
+  --line:rgba(255,176,104,0.16); --line2:rgba(155,124,246,0.18);
+  --disp:'Rajdhani',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--void);color:var(--cream);
+  font-family:var(--mono);touch-action:none;user-select:none;-webkit-user-select:none;}
+canvas{display:block;position:fixed;inset:0;}
+button{font-family:inherit;color:inherit;cursor:pointer;}
+
+/* ============ BOOT / INTRO ============ */
+#boot{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;align-items:center;
+  justify-content:flex-end;text-align:center;padding-bottom:6.5vh;transition:opacity 1.1s ease;}
+#boot.gone{opacity:0;pointer-events:none;}
+#boot::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(125% 105% at 50% 43%,transparent 40%,rgba(5,8,20,0.18) 70%,rgba(4,6,15,0.94) 100%);}
+.boot-inner{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;
+  padding:0 24px;max-width:560px;animation:bootRise 1.4s cubic-bezier(.2,.8,.2,1);}
+@keyframes bootRise{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
+.boot-eyebrow{font-family:var(--mono);font-size:.66rem;letter-spacing:.52em;text-transform:uppercase;
+  color:var(--soul);opacity:.85;margin-bottom:1.1rem;padding-left:.52em;}
+.boot-title{font-family:var(--disp);font-weight:300;font-size:clamp(1.5rem,4.4vw,2.6rem);line-height:.96;
+  letter-spacing:.04em;text-transform:uppercase;
+  background:linear-gradient(96deg,var(--hot) 0%,var(--gold) 34%,var(--ember) 62%,var(--soul) 100%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 18px rgba(255,176,104,.3));}
+.boot-title b{font-weight:600;}
+.boot-sub{font-family:var(--disp);font-weight:400;font-size:clamp(.9rem,2.6vw,1.15rem);letter-spacing:.34em;
+  text-transform:uppercase;color:var(--cream);opacity:.72;margin-top:.7rem;}
+.boot-tag{font-size:.74rem;line-height:1.7;letter-spacing:.04em;color:rgba(240,224,210,.5);
+  margin-top:1.5rem;max-width:33ch;}
+.boot-bar{width:min(280px,70vw);height:1px;margin-top:2.2rem;background:rgba(255,176,104,.12);position:relative;overflow:hidden;}
+.boot-bar i{position:absolute;inset:0 100% 0 0;background:linear-gradient(90deg,var(--gold),var(--hot));
+  transition:right .35s ease;}
+.boot-stat{font-size:.6rem;letter-spacing:.34em;text-transform:uppercase;color:rgba(207,227,255,.45);margin-top:.85rem;height:1em;}
+.boot-go{margin-top:2rem;padding:13px 46px;background:rgba(255,176,104,.05);border:1px solid rgba(255,176,104,.4);
+  color:var(--hot);font-family:var(--disp);font-weight:500;font-size:1rem;letter-spacing:.34em;text-transform:uppercase;
+  border-radius:2px;opacity:0;pointer-events:none;transition:all .4s ease;position:relative;overflow:hidden;}
+.boot-go.show{opacity:1;pointer-events:all;animation:goPulse 2.6s ease-in-out infinite;}
+.boot-go:hover{background:rgba(242,132,61,.18);border-color:var(--gold);letter-spacing:.4em;}
+@keyframes goPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,176,104,.0)}50%{box-shadow:0 0 28px -4px rgba(255,176,104,.45)}}
+
+/* ============ HUD ============ */
+#ui{position:fixed;inset:0;z-index:10;pointer-events:none;opacity:0;transition:opacity 1.1s ease .3s;}
+#ui.live{opacity:1;}
+.glass{background:var(--ink);backdrop-filter:blur(13px) saturate(1.2);-webkit-backdrop-filter:blur(13px) saturate(1.2);
+  border:1px solid var(--line);border-radius:3px;}
+#hud{position:absolute;top:0;left:0;right:0;padding:14px 16px;display:flex;justify-content:space-between;
+  align-items:flex-start;gap:10px;}
+.hud-col{display:flex;flex-direction:column;gap:7px;}
+.hud-col.r{align-items:flex-end;}
+.pill{padding:6px 13px;display:flex;align-items:center;gap:9px;font-size:.7rem;letter-spacing:.05em;white-space:nowrap;}
+.pill .ico{font-size:.92rem;line-height:1;filter:saturate(1.1);}
+.pill .lab{font-family:var(--disp);font-weight:500;letter-spacing:.16em;text-transform:uppercase;font-size:.62rem;
+  color:var(--gold);}
+.pill .val{color:var(--cream);font-weight:500;font-variant-numeric:tabular-nums;}
+.pill .val.act{color:var(--hot);}
+.pill.soul .lab{color:var(--soul);}
+.pill.bar{flex-direction:column;align-items:stretch;gap:5px;min-width:130px;}
+.pill.bar .top{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.meter{height:3px;background:rgba(207,227,255,.12);border-radius:3px;overflow:hidden;}
+.meter i{display:block;height:100%;width:100%;transform-origin:left;transition:transform .4s ease;
+  background:linear-gradient(90deg,var(--soul),var(--frost));}
+.meter.chk i{background:linear-gradient(90deg,var(--ember),var(--hot));}
+
+/* objective banner */
+#dispatch{position:absolute;top:74px;left:50%;transform:translateX(-50%) translateY(-12px);
+  padding:9px 20px;max-width:90vw;text-align:center;opacity:0;transition:opacity .4s,transform .4s;
+  border-color:rgba(242,132,61,.34);}
+#dispatch.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#dispatch .k{font-family:var(--disp);font-size:.6rem;letter-spacing:.32em;text-transform:uppercase;color:var(--ember);}
+#dispatch .t{font-size:.82rem;line-height:1.45;margin-top:3px;color:var(--cream);}
+
+/* off-screen objective arrow */
+#objArrow{position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none;opacity:0;transition:opacity .3s;}
+#objArrow .a{position:absolute;left:-13px;top:-13px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;
+  font-size:1.3rem;color:var(--hot);filter:drop-shadow(0 0 9px rgba(255,176,104,.8));}
+#objArrow.show{opacity:.92;}
+
+/* interact prompt */
+#prompt{position:absolute;left:50%;top:54%;transform:translate(-50%,-50%);text-align:center;opacity:0;
+  transition:opacity .22s;}
+#prompt.show{opacity:1;}
+#prompt .key{display:inline-block;padding:5px 14px 5px 13px;border:1px solid rgba(242,85,75,.5);border-radius:3px;
+  background:rgba(242,85,75,.14);color:var(--hot);font-family:var(--disp);font-weight:600;font-size:.76rem;
+  letter-spacing:.16em;text-transform:uppercase;}
+#prompt .who{display:block;font-size:.64rem;letter-spacing:.12em;color:rgba(240,224,210,.62);margin-top:6px;}
+
+/* dialog */
+#dialog{position:absolute;left:50%;bottom:104px;transform:translateX(-50%) translateY(14px);
+  width:min(540px,92vw);padding:17px 22px 14px;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;
+  border-color:rgba(155,124,246,.3);}
+#dialog.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:all;}
+#dialog .nm{font-family:var(--disp);font-weight:600;font-size:.66rem;letter-spacing:.24em;text-transform:uppercase;
+  color:var(--soul);display:flex;align-items:center;gap:8px;}
+#dialog .nm:before{content:"";width:18px;height:1px;background:var(--soul);opacity:.6;}
+#dialog .tx{font-size:.86rem;line-height:1.65;color:rgba(240,224,210,.94);margin-top:9px;}
+#dialog .hint{font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:rgba(207,227,255,.4);
+  margin-top:11px;text-align:right;}
+
+/* action rail */
+#rail{position:absolute;right:14px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:9px;
+  pointer-events:all;}
+.rbtn{width:48px;height:48px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;position:relative;
+  border:1px solid var(--line);background:var(--ink);backdrop-filter:blur(13px);-webkit-backdrop-filter:blur(13px);
+  border-radius:3px;transition:all .2s;}
+.rbtn:hover{background:rgba(242,132,61,.16);border-color:rgba(242,132,61,.45);}
+.rbtn .tip{position:absolute;right:58px;top:50%;transform:translateY(-50%);padding:4px 10px;white-space:nowrap;
+  font-family:var(--disp);font-weight:500;font-size:.64rem;letter-spacing:.14em;text-transform:uppercase;
+  background:var(--ink);border:1px solid var(--line);border-radius:2px;color:var(--cream);opacity:0;pointer-events:none;
+  transition:opacity .2s;}
+.rbtn:hover .tip{opacity:1;}
+
+/* character switcher */
+#cswitch{position:absolute;left:14px;top:96px;display:flex;flex-direction:column;gap:6px;pointer-events:all;}
+.cbtn{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:1.05rem;
+  border:1px solid var(--line);background:var(--ink);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-radius:3px;transition:all .18s;}
+.cbtn:hover{transform:translateX(3px);}
+.cbtn.on{border-color:var(--gold);background:rgba(255,176,104,.2);box-shadow:0 0 14px -3px rgba(255,176,104,.6);}
+
+/* panels */
+.panel{position:absolute;right:74px;top:50%;transform:translateY(-50%) translateX(16px);width:min(340px,86vw);
+  max-height:74vh;overflow-y:auto;padding:20px;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s;
+  border-color:var(--line2);}
+.panel.open{opacity:1;pointer-events:all;transform:translateY(-50%) translateX(0);}
+.panel::-webkit-scrollbar{width:5px;}.panel::-webkit-scrollbar-thumb{background:rgba(255,176,104,.3);border-radius:3px;}
+.panel h2{font-family:var(--disp);font-weight:600;font-size:.72rem;letter-spacing:.26em;text-transform:uppercase;
+  color:var(--gold);display:flex;align-items:center;gap:9px;}
+.panel h2 .x{margin-left:auto;cursor:pointer;opacity:.5;font-size:.95rem;}.panel h2 .x:hover{opacity:1;}
+.panel .desc{font-size:.74rem;line-height:1.6;color:rgba(240,224,210,.62);margin:11px 0 14px;}
+.lore{padding:11px 13px;margin:9px 0;background:rgba(155,124,246,.07);border-left:2px solid var(--soul);border-radius:2px;}
+.lore h3{font-family:var(--disp);font-weight:600;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--frost);}
+.lore p{font-size:.74rem;line-height:1.6;color:rgba(240,224,210,.78);margin-top:4px;}
+.ward{display:flex;flex-wrap:wrap;gap:7px;}
+.witem{flex:1 1 78px;min-width:78px;display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 6px;
+  border:1px solid var(--line);background:rgba(255,176,104,.04);border-radius:3px;transition:all .18s;cursor:pointer;}
+.witem:hover{border-color:rgba(242,132,61,.4);background:rgba(242,132,61,.1);}
+.witem.on{border-color:var(--gold);background:rgba(255,176,104,.16);}
+.witem .wi{font-size:1.5rem;line-height:1;}
+.witem .wn{font-size:.56rem;letter-spacing:.07em;text-transform:uppercase;color:rgba(240,224,210,.7);text-align:center;}
+.setrow{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,176,104,.08);font-size:.74rem;}
+.setrow:last-child{border-bottom:none;}
+.setrow .sv{color:var(--gold);cursor:pointer;font-weight:500;letter-spacing:.08em;}
+.fine{font-size:.6rem;line-height:1.6;letter-spacing:.04em;color:rgba(207,227,255,.36);margin-top:12px;}
+
+/* chakra wheel */
+#wheel{position:absolute;left:50%;bottom:150px;transform:translateX(-50%) scale(.85);display:flex;gap:9px;
+  opacity:0;pointer-events:none;transition:all .26s cubic-bezier(.2,.9,.3,1.3);}
+#wheel.open{opacity:1;pointer-events:all;transform:translateX(-50%) scale(1);}
+.pip{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.35rem;
+  border:1.5px solid var(--line);background:var(--ink);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  transition:all .18s;position:relative;}
+.pip:hover{transform:scale(1.16) translateY(-4px);border-color:var(--gold);background:rgba(242,132,61,.2);}
+.pip .pn{position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-size:.52rem;letter-spacing:.08em;
+  text-transform:uppercase;color:rgba(240,224,210,.65);white-space:nowrap;opacity:0;transition:opacity .18s;}
+.pip:hover .pn{opacity:1;}
+
+/* floating emote */
+.emote{position:fixed;z-index:60;font-size:2.4rem;pointer-events:none;
+  filter:drop-shadow(0 0 16px rgba(255,176,104,.85));animation:emoteUp 1.8s ease forwards;}
+@keyframes emoteUp{0%{opacity:0;transform:translateY(8px) scale(.6)}18%{opacity:1;transform:translateY(0) scale(1.1)}
+  100%{opacity:0;transform:translateY(-92px) scale(1.5)}}
+
+/* minimap */
+#mini{position:absolute;right:16px;bottom:16px;width:118px;height:118px;border-radius:50%;overflow:hidden;
+  border:1px solid var(--line);background:rgba(8,6,14,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  box-shadow:0 8px 30px -12px rgba(0,0,0,.8);}
+#mini canvas{width:100%;height:100%;}
+#mini .ring{position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  box-shadow:inset 0 0 0 1px rgba(155,124,246,.2),inset 0 0 22px -6px rgba(255,176,104,.4);}
+
+/* controls hint */
+#keys{position:absolute;left:16px;bottom:16px;display:flex;flex-wrap:wrap;gap:5px;max-width:48vw;}
+.kk{padding:3px 9px;font-size:.6rem;letter-spacing:.06em;border:1px solid rgba(255,176,104,.16);border-radius:2px;
+  background:rgba(8,6,14,.5);color:rgba(240,224,210,.6);}
+.kk b{color:var(--gold);font-weight:600;}
+
+/* mobile */
+#mctl{position:absolute;inset:auto 0 0 0;display:none;justify-content:space-between;align-items:flex-end;
+  padding:0 22px 26px;pointer-events:none;}
+#joy{width:118px;height:118px;border-radius:50%;border:1.5px solid rgba(255,176,104,.22);
+  background:rgba(255,176,104,.05);position:relative;pointer-events:all;touch-action:none;}
+#joy i{position:absolute;left:50%;top:50%;width:46px;height:46px;border-radius:50%;transform:translate(-50%,-50%);
+  background:radial-gradient(circle at 38% 34%,var(--gold),var(--ember));box-shadow:0 0 16px -2px rgba(242,132,61,.7);}
+.mbtns{display:flex;flex-direction:column;gap:10px;pointer-events:all;}
+.mb{width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.4rem;
+  border:1.5px solid rgba(242,132,61,.4);background:rgba(242,132,61,.13);touch-action:none;}
+.mb.j{border-color:rgba(155,124,246,.4);background:rgba(155,124,246,.13);}
+
+/* victory */
+#win{position:fixed;inset:0;z-index:200;display:none;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:0 28px;background:radial-gradient(120% 90% at 50% 40%,rgba(10,5,6,.55),rgba(5,6,15,.94));
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
+#win.show{display:flex;animation:bootRise .9s ease;}
+#win h1{font-family:var(--disp);font-weight:300;font-size:clamp(2.2rem,8vw,4.2rem);letter-spacing:.06em;text-transform:uppercase;
+  background:linear-gradient(96deg,var(--hot),var(--gold) 45%,var(--soul));-webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;filter:drop-shadow(0 0 24px rgba(255,176,104,.3));}
+#win p{font-size:.84rem;line-height:1.8;color:rgba(240,224,210,.66);max-width:46ch;margin:1.3rem 0 .4rem;}
+#win .stat{font-family:var(--disp);font-size:1rem;letter-spacing:.2em;color:var(--gold);margin-bottom:1.6rem;}
+#win button{padding:13px 44px;border:1px solid rgba(255,176,104,.4);background:rgba(255,176,104,.05);color:var(--hot);
+  font-family:var(--disp);font-weight:500;letter-spacing:.3em;text-transform:uppercase;border-radius:2px;font-size:.92rem;}
+#win button:hover{background:rgba(242,132,61,.18);}
+
+/* ============ TRIFORGE build console ============ */
+.forge-flash{font-size:.66rem;letter-spacing:.04em;color:var(--gold);min-height:1em;opacity:0;transition:opacity .3s;margin:2px 0 8px;}
+.forge-actions{display:flex;flex-direction:column;gap:7px;margin-bottom:12px;}
+.forge-btn{padding:9px 12px;border:1px solid var(--line);background:rgba(255,176,104,.05);color:var(--cream);
+  font-family:var(--disp);font-weight:500;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;border-radius:3px;
+  transition:all .18s;text-align:left;}
+.forge-btn:hover{border-color:rgba(242,132,61,.5);background:rgba(242,132,61,.12);}
+.forge-btn.primary{border-color:rgba(255,176,104,.45);background:rgba(255,176,104,.12);color:var(--hot);}
+.forge-btn.sm{padding:4px 11px;font-size:.6rem;text-transform:uppercase;}
+.forge-btn em{font-style:normal;opacity:.5;font-size:.85em;}
+.forge-caps{display:flex;flex-direction:column;gap:9px;}
+.forge-cap{padding:10px 11px;border:1px solid var(--line);border-left:2px solid var(--soul);border-radius:3px;
+  background:rgba(155,124,246,.06);}
+.fc-h{display:flex;align-items:baseline;gap:8px;}
+.fc-cap{font-family:var(--disp);font-weight:600;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--frost);}
+.fc-d{font-size:.58rem;letter-spacing:.04em;color:rgba(240,224,210,.5);}
+.fc-b{font-size:.68rem;line-height:1.5;color:rgba(240,224,210,.78);margin:5px 0 7px;}
+.fc-f{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.fc-f code{font-family:var(--mono);font-size:.6rem;color:var(--teal);background:rgba(61,201,194,.08);padding:2px 6px;border-radius:2px;}
+.forge-cli{font-family:var(--mono);font-size:.56rem;line-height:1.5;color:rgba(207,227,255,.78);white-space:pre-wrap;
+  background:rgba(8,6,14,.55);border:1px solid var(--line);border-radius:3px;padding:9px;margin-top:10px;}
+.forge-harness{margin-top:14px;padding:11px 12px;border:1px solid var(--line);border-left:2px solid var(--ember);
+  border-radius:3px;background:rgba(242,132,61,.06);}
+.fh-h{font-family:var(--disp);font-weight:600;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);}
+.fh-h span{color:rgba(240,224,210,.5);font-weight:400;font-size:.82em;letter-spacing:.06em;}
+.fh-row{font-size:.64rem;line-height:1.6;color:rgba(240,224,210,.8);margin-top:6px;}
+.fh-row b{color:var(--hot);}
+.fh-row code,.forge-harness code{font-family:var(--mono);font-size:.92em;color:var(--teal);}
+.fh-tails{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;}
+.fh-tail{font-size:.54rem;letter-spacing:.04em;padding:2px 7px;border:1px solid rgba(155,124,246,.3);border-radius:10px;
+  background:rgba(155,124,246,.08);color:var(--frost);}
+.fh-int{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;}
+.fh-int span{font-size:.52rem;letter-spacing:.03em;color:rgba(207,227,255,.55);padding:2px 6px;background:rgba(8,6,14,.4);border-radius:2px;}
+
+@media(max-width:780px){
+  #mctl{display:flex;}#keys{display:none;}
+  #mini{width:88px;height:88px;bottom:auto;top:130px;right:12px;}
+  #rail{right:11px;gap:7px;}.rbtn{width:42px;height:42px;font-size:1.05rem;}.rbtn .tip{display:none;}
+  #cswitch{top:auto;bottom:170px;left:50%;transform:translateX(-50%);flex-direction:row;}
+  .panel{right:10px;left:10px;width:auto;}
+  #dialog{bottom:170px;}#wheel{bottom:210px;}
+}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;}}
+</style>
+</head>
+<body>
+
+<!-- ===== BOOT ===== -->
+<div id="boot">
+  <div class="boot-inner">
+    <div class="boot-eyebrow">Quasar Horizon · Courier Sim</div>
+    <div class="boot-title">KURAMA</div>
+    <div class="boot-bar"><i id="bootbar"></i></div>
+    <div class="boot-stat" id="bootstat">Spinning up accretion…</div>
+    <button class="boot-go" id="bootgo">BEGIN</button>
+  </div>
+</div>
+
+<div id="ui">
+  <div id="hud">
+    <div class="hud-col">
+      <div class="pill glass">🦊 <span class="lab" id="cname">Kuro</span> <span class="val" id="ctitle">Nine-Tail Courier</span></div>
+      <div class="pill glass">📦 <span class="lab">Dispatch</span> <span class="val act" id="dcount">0 / 6</span></div>
+      <div class="pill glass">📍 <span class="val" id="loc">Dispatch Hall</span></div>
+      <div class="pill glass">🗺 <span class="lab">Discovered</span> <span class="val" id="disc">0 / 0</span></div>
+      <div class="pill glass">🎥 <span class="lab">Camera</span> <span class="val" id="camMode">Follow</span></div>
+    </div>
+    <div class="hud-col r">
+      <div class="pill glass soul">✦ <span class="lab">Quasar</span> <span class="val" id="phase">Dawn</span> · <span class="val" id="gtime">06:00</span></div>
+      <div class="pill bar glass"><div class="top"><span class="lab" style="color:var(--soul)">Photon</span><span class="val" id="shards">0</span></div>
+        <div class="meter"><i id="shardbar"></i></div></div>
+      <div class="pill bar glass"><div class="top"><span class="lab">Chakra</span><span class="val" id="chakra">100</span></div>
+        <div class="meter chk"><i id="chkbar"></i></div></div>
+    </div>
+  </div>
+
+  <div id="dispatch" class="glass"><div class="k">New Dispatch</div><div class="t" id="dtext"></div></div>
+  <div id="objArrow"><div class="a">▲</div></div>
+  <div id="prompt"><span class="key" id="pkey">E · Interact</span><span class="who" id="pwho"></span></div>
+
+  <div id="dialog" class="glass"><div class="nm" id="dnm">Agent</div><div class="tx" id="dtx">…</div>
+    <div class="hint">Tap · E to continue</div></div>
+
+  <div id="cswitch"></div>
+
+  <div id="rail">
+    <button class="rbtn" onclick="UI.panel('codex')">📖<span class="tip">Codex</span></button>
+    <button class="rbtn" onclick="UI.panel('ward')">👘<span class="tip">Wardrobe</span></button>
+    <button class="rbtn" onclick="UI.wheel()">🌀<span class="tip">Hand Signs</span></button>
+    <button class="rbtn" onclick="TriForge.open()">⚒<span class="tip">TriForge</span></button>
+    <button class="rbtn" onclick="UI.panel('set')">⚙<span class="tip">Settings</span></button>
+  </div>
+
+  <div class="panel glass" id="p-codex">
+    <h2>Codex · Horizon <span class="x" onclick="UI.closeAll()">✕</span></h2>
+    <div id="codexBody"></div>
+  </div>
+  <div class="panel glass" id="p-ward">
+    <h2>Wardrobe · Identity <span class="x" onclick="UI.closeAll()">✕</span></h2>
+    <div class="desc">Choose your courier. Cloaks and auras persist across sessions.</div>
+    <div class="ward" id="wardBody"></div>
+  </div>
+  <div class="panel glass" id="p-forge">
+    <h2>TriForge · Build Console <span class="x" onclick="UI.closeAll()">✕</span></h2>
+    <div id="forgeBody"></div>
+  </div>
+  <div class="panel glass" id="p-set">
+    <h2>Settings <span class="x" onclick="UI.closeAll()">✕</span></h2>
+    <div class="setrow">Audio <span class="sv" id="setAudio" onclick="UI.audio()">ON</span></div>
+    <div class="setrow">Quasar bloom <span class="sv" id="setBloom" onclick="UI.bloom()">High</span></div>
+    <div class="setrow">Day length <span class="sv" id="setDay" onclick="UI.daylen()">Normal</span></div>
+    <div class="setrow">Gamepad <span class="sv" id="gpStat">searching…</span></div>
+    <div class="fine">Saved locally · KCE · CodexOS runtime. Original characters &amp; world — a public-safe Quasar Horizon.</div>
+  </div>
+
+  <div id="wheel">
+    <div class="pip" onclick="Game.sign('🔥','Ember Pulse')">🔥<span class="pn">Ember</span></div>
+    <div class="pip" onclick="Game.sign('⚡','Light Step')">⚡<span class="pn">Light</span></div>
+    <div class="pip" onclick="Game.sign('🌀','Spiral Wind')">🌀<span class="pn">Spiral</span></div>
+    <div class="pip" onclick="Game.sign('❄','Frost Veil')">❄<span class="pn">Frost</span></div>
+    <div class="pip" onclick="Game.sign('✦','Soul Seal')">✦<span class="pn">Soul</span></div>
+    <div class="pip" onclick="Game.sign('👋','Greet')">👋<span class="pn">Greet</span></div>
+  </div>
+
+  <div id="mini"><canvas id="minicv" width="236" height="236"></canvas><div class="ring"></div></div>
+
+  <div id="keys">
+    <span class="kk"><b>WASD</b> move</span><span class="kk"><b>Shift</b> sprint</span><span class="kk"><b>Space</b> jump</span>
+    <span class="kk"><b>E</b> interact</span><span class="kk"><b>RMB</b> orbit cam</span><span class="kk"><b>C</b> camera</span><span class="kk"><b>Q</b> signs</span>
+    <span class="kk"><b>1-8</b> courier</span>
+  </div>
+
+  <div id="mctl">
+    <div id="joy"><i id="joyk"></i></div>
+    <div class="mbtns"><div class="mb" id="mInt">💬</div><div class="mb j" id="mJmp">⬆</div></div>
+  </div>
+</div>
+
+<div id="win">
+  <h1>Horizon Synced</h1>
+  <p id="winText"></p>
+  <div class="stat" id="winStat"></div>
+  <button onclick="location.reload()">Walk Again</button>
+</div>
+
+
+<!-- ===== TriFable MiniVerse · inlined offline runtime (single-file) ===== -->
+%VENDOR%
+%MODULES%
+<script type="module">
+(async () => {
+  const stat = () => document.getElementById('bootstat');
+  const get  = id => { const e=document.getElementById('src-'+id); return e?e.textContent:null; };
+  try {
+    const threeURL  = URL.createObjectURL(new Blob([get('three')], {type:'text/javascript'}));
+    const addonsSrc = get('addons').split('./three.module.js').join(threeURL);
+    const addonsURL = URL.createObjectURL(new Blob([addonsSrc], {type:'text/javascript'}));
+    const THREE = await import(threeURL);
+    const A     = await import(addonsURL);
+    Object.assign(window, { THREE, EffectComposer:A.EffectComposer, RenderPass:A.RenderPass,
+      UnrealBloomPass:A.UnrealBloomPass, OutputPass:A.OutputPass, ShaderPass:A.ShaderPass });
+    const ORDER = %ORDER%;
+    for (const id of ORDER) {
+      const code = get(id);
+      if (code == null) { console.warn('[env] optional pack absent: '+id); continue; }
+      const s = document.createElement('script');
+      s.textContent = '//# sourceURL='+id+'\n'+code;
+      document.body.appendChild(s);
+    }
+    if (typeof window.__PLATFORM_BOOT__ === 'function') { await window.__PLATFORM_BOOT__(); }
+    else { if (typeof window.init !== 'function') throw new Error('init() not defined');
+           await window.init(); window.loop(); }
+  } catch (e) { console.error(e); const s=stat(); if (s) s.textContent='Boot error — see console: '+e.message; }
+})();
+</script>
+
+</body>
+</html>
