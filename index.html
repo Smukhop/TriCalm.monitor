@@ -247,6 +247,8 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;background:v
 .lrow.built{color:rgba(111,227,176,.82)}
 .lrow.built k{color:var(--jade)}
 .lrow.queued{color:rgba(125,147,171,.62)}
+.lrow.part{color:rgba(255,189,106,.86)}
+.lrow.part k{color:#ff9b3d}
 
 /* the active item gets the room it deserves */
 .lactive{border-left:1px solid var(--cyan);padding:2px 0 3px 8px;margin:2px 0 0 1px;
@@ -419,6 +421,7 @@ body.idle #view{cursor:none}
     <u>CAUSEWAY LAID</u><em id="tKm">0.00 km</em>
     <u>PHASES CLOSED</u><em id="tPhase">0</em>
     <u>HOLDS RAISED / CLEARED</u><em id="tHold">0 / 0</em>
+    <u>RECOVERIES / SHORTFALLS</u><em id="tFail">0 / 0</em>
     <u>REALMS COMMISSIONED</u><em id="tRealm">0 / 9</em>
     <u>UPTIME</u><em id="tUp">00:00:00</em>
   </div>
@@ -448,6 +451,9 @@ body.idle #view{cursor:none}
   <div class="tr"><u>SEA LEVEL</u><em id="valLevel">—</em></div>
   <div class="tr"><u>SEA STATE</u><em id="valState">GLASS</em></div>
   <div class="tr"><u>MOBILITY</u><em id="valMobility">BOOTS · TERRAIN</em></div>
+  <div class="tr"><u>MEDIUM</u><em id="valMedium">SNOW</em></div>
+  <div class="tr"><u>FACE / CELERITY</u><em id="valFace">—</em></div>
+  <div class="tr"><u>TRIM LOCK</u><em id="valLock">—</em></div>
   <div class="tr"><u>SURGE</u><em id="valSurge">STANDING BY</em></div>
   <div class="tr"><u>&#964; DILATION</u><em id="valTau">1 : 1</em></div>
 </div>
@@ -657,6 +663,7 @@ const S = {
   // biosphere — realm I is the dune sea, so that is where the agent starts
   biome: "ochre", terraformRate: 0.85, veinGlow: 1.0, biomeAtmos: true,
   // the False Earth
+  showMoons: true, moonScale: 1.0, moonLight: 1.0, moonDrift: 1.0, nebulaGain: 1.0,
   showPlanet: true, planetSize: 0.52, planetElevation: 22, planetAzimuth: 196,
   auroraGain: 1.0, starGain: 1.0, planetLight: 1.0, planetHalo: 1.0, planetSpin: 1.0,
   // autonomy — the walking agent, its charter and its architecture
@@ -760,6 +767,11 @@ const SCHEMA = [
     { k: "planetSize", l: "Angular size", t: "f", min: 0.05, max: 0.92, step: 0.01 },
     { k: "planetElevation", l: "Elevation", t: "f", min: -10, max: 80, step: 0.5 },
     { k: "planetAzimuth", l: "Azimuth", t: "f", min: 0, max: 360, step: 1 },
+    { k: "showMoons", l: "Companion bodies", t: "b" },
+    { k: "moonScale", l: "Moon size", t: "f", min: 0.2, max: 2.5, step: 0.01 },
+    { k: "moonLight", l: "Moon brightness", t: "f", min: 0, max: 3, step: 0.01 },
+    { k: "moonDrift", l: "Orbital drift", t: "f", min: 0, max: 4, step: 0.01 },
+    { k: "nebulaGain", l: "Nebula", t: "f", min: 0, max: 3, step: 0.01 },
     { k: "auroraGain", l: "Aurora", t: "f", min: 0, max: 3, step: 0.01 },
     { k: "starGain", l: "Starfield", t: "f", min: 0, max: 3, step: 0.01 },
     { k: "planetLight", l: "Surface light", t: "f", min: 0, max: 3, step: 0.01 },
@@ -1070,6 +1082,7 @@ const MEDIA = {
     onsetSpeed: 2.2, satSpan: 9.0, surfGate: 0.06,
     throwGain: 1.00, curlGain: 1.00, erodeGain: 1.00, sink: 0.10,
     sprayKind: 0, sprayPerMetre: 88, clods: true, plumeSpeedGate: 3.0,
+    groundBite: 1.00,
   },
   ice: {
     id: 1, label: "ICE", verb: "rime-surf",
@@ -1079,6 +1092,7 @@ const MEDIA = {
     onsetSpeed: 1.7, satSpan: 12.0, surfGate: 0.05,
     throwGain: 0.34, curlGain: 0.45, erodeGain: 0.28, sink: 0.04,
     sprayKind: 0, sprayPerMetre: 40, clods: true, plumeSpeedGate: 5.0,
+    groundBite: 0.22,
   },
   sand: {
     id: 2, label: "SAND", verb: "dune-surf",
@@ -1088,6 +1102,7 @@ const MEDIA = {
     onsetSpeed: 2.6, satSpan: 8.0, surfGate: 0.07,
     throwGain: 0.62, curlGain: 0.22, erodeGain: 0.42, sink: 0.14,
     sprayKind: 0, sprayPerMetre: 130, clods: false, plumeSpeedGate: 2.6,
+    groundBite: 1.15,
   },
   basalt: {
     id: 3, label: "BASALT", verb: "rock-skate",
@@ -1095,6 +1110,7 @@ const MEDIA = {
     onsetSpeed: 3.0, satSpan: 9.0, surfGate: 0.08,
     throwGain: 0.10, curlGain: 0.06, erodeGain: 0.55, sink: 0.02,
     sprayKind: 1, sprayPerMetre: 26, clods: true, plumeSpeedGate: 6.0,
+    groundBite: 0.12,
   },
   water: {
     id: 4, label: "WATER", verb: "wave-surf",
@@ -1105,6 +1121,7 @@ const MEDIA = {
     onsetSpeed: 1.4, satSpan: 10.0, surfGate: 0.05,
     throwGain: 0.58, curlGain: 1.45, erodeGain: 0.16, sink: -0.02,
     sprayKind: 2, sprayPerMetre: 96, clods: false, plumeSpeedGate: 2.2,
+    groundBite: 0.55,
     /** Extra drive while the board is trimmed on a steep face and near celerity. */
     catchGain: 15.0,
     /** How fast the lock bleeds away once the wave outruns the board. */
@@ -1166,8 +1183,8 @@ const Medium = {
  * ---------------------------------------------------------------------- */
 const SYSTEM_MANIFEST = Object.freeze({
   id: "jaganaught-loki-system-v5",
-  visibleBodies: 9,
-  inhabitedBodies: 3,
+  visibleBodies: 10,
+  inhabitedBodies: 4,
   agentCellsPerInhabitedBody: 9,
   council: { overlay: "Minato Council", seatsPerInhabitedBody: 3, duplicates: false },
   worlds: [
@@ -1187,8 +1204,10 @@ const SYSTEM_MANIFEST = Object.freeze({
       traversal: "Loki cutter", charter: "chart the shallows · raise the lantern towers" },
     { id: "brine", biome: "abyss", numeral: "VIII", seat: "BRINE CATHEDRAL", inhabited: false,
       traversal: "seal boots", charter: "sink the brine piles · vault the deep halls" },
-    { id: "floe", biome: "floe", numeral: "IX", seat: "FLOE MERIDIAN", inhabited: false,
-      traversal: "rime boots / snow-surf", charter: "set the meridian · hand the system over" },
+    { id: "verdigris", biome: "verdigris", numeral: "IX", seat: "VERDIGRIS ROADS", inhabited: true,
+      traversal: "Loki cutter / wave-surf", charter: "hold the jade roads · school the deep water" },
+    { id: "floe", biome: "floe", numeral: "X", seat: "FLOE MERIDIAN", inhabited: false,
+      traversal: "Loki cutter / rime-surf", charter: "set the meridian · hand the system over" },
   ],
 });
 /**
@@ -1211,16 +1230,37 @@ const AVATAR_SOURCE = Object.freeze({
 });
 const WATER_REALM_BIOMES = new Set(["tidal", "shoal"]);
 const ICE_ROUTE_BIOMES = new Set(["glacis", "floe"]);
+
 /**
- * Which realms the cutter is the traversal contract for. Wider than
- * WATER_REALM_BIOMES on purpose: `verdigris` is a fully authored jade sea that was
- * unreachable through the biome cycle and never got a hull, and `floe` is a hull
- * working *through* pack ice — the reference plate for the whole ice route — which
- * the old on-foot-only rule made impossible to stage.
+ * Traversal capabilities, parsed out of SYSTEM_MANIFEST's own `traversal` column.
+ *
+ * That column was a caption. Five independent biome Sets decided who sailed, who
+ * surfed, what the outfit was and what the board's physics were, and not one of them
+ * was the manifest — so the manifest could say "boots" while the engine sailed and
+ * nothing anywhere would notice. Parsing it makes the manifest the single authority
+ * and turns any contradiction into a one-string edit.
  */
-const SAIL_REALM_BIOMES = new Set(["tidal", "shoal", "verdigris", "floe"]);
-/** Realms where holding surf puts a board on the water instead of a hull. */
-const SURF_REALM_BIOMES = new Set(["tidal", "shoal", "verdigris", "abyss", "floe"]);
+function traversalCaps(str) {
+  const t = (str || "boots").toLowerCase();
+  return {
+    sail: t.includes("cutter"),
+    surf: t.includes("surf"),
+    boots: t.includes("boots") || !t.includes("cutter"),
+    // The boot qualifiers were never modelled at all. Carried through as flags so
+    // the outfit and the annunciator have something real to read.
+    thermal: t.includes("heat"),
+    sealed: t.includes("seal"),
+    rime: t.includes("rime"),
+    label: t,
+  };
+}
+/** Biome -> world, so a biome can find its realm and its caps without the pilot. */
+const BIOME_REALM = {};
+for (const w of SYSTEM_MANIFEST.worlds) BIOME_REALM[w.biome] = w;
+function capsForBiome(key) {
+  const w = BIOME_REALM[key];
+  return traversalCaps(w && w.traversal);
+}
 
 /* The water-world asset contract is data, not a one-off pile of mesh calls.
  * It makes the structural and gameplay intent inspectable from the monitor. */
@@ -1361,6 +1401,21 @@ const Biome = {
     out.set(L.base[0], L.base[1], L.base[2]);
   },
 };
+
+/**
+ * The three companions. Sizes are the sine of the angular radius, matching the
+ * False Earth's own convention — a big cratered moon low in the sky, a small pale
+ * one high and fast, and a ringed giant standing well off. Orbital rates are
+ * deliberately incommensurate so the arrangement never repeats within a session.
+ */
+const MOON_SET = [
+  { kind: 0, az: 66, el: 19, size: 0.150, bright: 1.00, rate: 0.0031, wobble: 3.0,
+    ringTilt: 0, ringExtent: 0 },
+  { kind: 1, az: 302, el: 47, size: 0.055, bright: 1.15, rate: 0.0074, wobble: 5.0,
+    ringTilt: 0, ringExtent: 0 },
+  { kind: 2, az: 214, el: 31, size: 0.098, bright: 0.92, rate: 0.0017, wobble: 2.0,
+    ringTilt: 0.42, ringExtent: 2.45 },
+];
 
 const DEBUG_MODES = {
   beauty: 0, deform: 1, normals: 2, depth: 3, cascades: 4, footprint: 5,
@@ -2932,6 +2987,178 @@ vec3 starField(vec3 rd,float t,float gain){
   return tint*(a+b+c)*gain*alt;
 }
 
+// --- nebula ---------------------------------------------------------------
+// A banded emission wash behind the starfield. Two domain-warped fBm layers in
+// two hues, gated to a great-circle band so it reads as a galactic plane the
+// system is sitting inside rather than as fog smeared over the whole dome. Cheap
+// because it is evaluated on the direction only — no marching, no parallax, and
+// it is stable under TAA for exactly the reason the stars are: nothing moves.
+vec3 nebula(vec3 rd,float gain){
+  if(gain<=0.001) return vec3(0.0);
+  // Band coordinate: a plane tilted off the horizon so the arm crosses the sky
+  // diagonally instead of lying along it.
+  vec3 axis=normalize(vec3(0.36,0.78,-0.51));
+  float band=dot(rd,axis);
+  float env=exp(-band*band*7.5);
+  if(env<0.004) return vec3(0.0);
+  // Warp, then ridge: the same recipe the vein field uses, and for the same
+  // reason — warping before the ridge is what turns bands into filaments.
+  vec2 q=vec2(atan(rd.z,rd.x)*1.35,band*3.1);
+  float w1=noise2(q*1.7), w2=noise2(q*3.3+7.3);
+  vec2 wq=q+vec2(w1,w2)*0.9;
+  float dust=fbmd(wq*1.25,4,2.06,0.52).x*0.5+0.5;
+  float fil=1.0-abs(noise2(wq*2.6));
+  // Magenta-violet cores through to a teal rim: the two hues the ice plates put
+  // behind the aurora, and they have to be separated or the whole thing greys out.
+  vec3 col=mix(vec3(0.30,0.10,0.44),vec3(0.62,0.22,0.86),dust);
+  col=mix(col,vec3(0.10,0.52,0.62),pow(fil,2.2)*0.62);
+  col+=vec3(0.9,0.55,0.30)*pow(fil,7.0)*0.35;
+  // Killed toward the horizon by the same air that kills the stars.
+  float alt=smoothstep(-0.02,0.34,rd.y);
+  return col*env*dust*gain*alt*0.42;
+}
+
+/* --- companion bodies ----------------------------------------------------
+ * The reference plates are never a sky with one thing in it: there are two or
+ * three moons up at once and a ringed giant behind them. This draws up to three
+ * companions on the same skybox ray the False Earth uses, at a fraction of its
+ * cost — no aurora, no continents, no terminator model beyond a wrapped diffuse.
+ *
+ * Three kinds, because each carries a different read:
+ *   0  a cratered rock moon. The craters are the whole silhouette, so they are
+ *      real dents in the shading rather than a texture — a jittered cell grid of
+ *      rim-and-floor discs, which is what a battered airless surface looks like.
+ *   1  a smooth pale body, which is what sells a thin crescent: any surface
+ *      detail at a narrow phase angle just reads as noise on a fingernail.
+ *   2  a ringed giant. The ring is intersected against its own plane, so it
+ *      passes in front of the disc on one side and behind it on the other, which
+ *      is the single thing that makes a ring read as a ring.
+ */
+uniform vec4 uMoonA[3];   // (direction.xyz, sin of angular radius) — w<=0 is off
+uniform vec4 uMoonB[3];   // (kind, brightness, ring tilt rad, ring extent)
+uniform float uNebulaGain;
+
+// Cratered relief on the unit disc. Returns a shading multiplier.
+float moonCraters(vec3 N,vec3 L){
+  float shade=1.0;
+  // Two octaves of cells: a few big basins, many small pits.
+  for(int oct=0;oct<2;oct++){
+    float cell=oct==0?5.5:13.0;
+    vec3 p=N*cell;
+    vec3 id=floor(p);
+    for(int k=0;k<8;k++){
+      vec3 o=vec3(float(k&1),float((k>>1)&1),float((k>>2)&1));
+      vec3 h=hash33(id+o);
+      if(h.z<(oct==0?0.62:0.50)) continue;
+      vec3 c=(id+o+h*0.8+0.1)/cell;
+      float d=length(N-normalize(c))*cell;
+      float r=0.30+h.x*0.42;
+      if(d>r) continue;
+      float u=d/r;
+      // Floor dark, rim bright, and the rim brightest on the sunward side —
+      // which is the cue that reads as depth rather than as a stain.
+      float floorD=1.0-smoothstep(0.55,0.95,u);
+      float rim=exp(-pow((u-0.86)*7.0,2.0));
+      float sunward=0.5+0.5*dot(normalize(c),L);
+      shade-=floorD*(0.16+0.10*h.y)*(oct==0?1.0:0.62);
+      shade+=rim*(0.14+0.10*sunward)*(oct==0?1.0:0.70);
+    }
+  }
+  return clamp(shade,0.42,1.55);
+}
+
+vec3 companions(vec3 rd,vec3 sunDir,vec3 sunRad,inout float cover){
+  vec3 acc=vec3(0.0);
+  for(int i=0;i<3;i++){
+    vec4 A=uMoonA[i];
+    if(A.w<=1e-4) continue;
+    vec3 dir=normalize(A.xyz);
+    float sinR=A.w;
+    vec4 B=uMoonB[i];
+    int kind=int(B.x+0.5);
+    float cosR=sqrt(max(0.0,1.0-sinR*sinR));
+    float md=dot(rd,dir);
+    // Reject anything outside a cone wide enough for the disc plus its ring.
+    float reach=sinR*(kind==2?(B.w+1.4):2.0);
+    if(md<cosR-reach) continue;
+
+    vec3 up=abs(dir.y)>0.985?vec3(1.0,0.0,0.0):vec3(0.0,1.0,0.0);
+    vec3 T=normalize(cross(up,dir));
+    vec3 Bt=cross(dir,T);
+    float u=dot(rd,T)/sinR, v=dot(rd,Bt)/sinR;
+    float r2=u*u+v*v;
+
+    // ---- the ring, behind the disc ---------------------------------------
+    // Drawn twice: once for the half that passes behind the planet and once for
+    // the half in front, with the disc between them. Sign of v in the tilted frame is
+    // the side test, so one sign is behind and the other is in front.
+    vec3 ringCol=vec3(0.0); float ringA=0.0;
+    if(kind==2){
+      float ct=cos(B.z), st=sin(B.z);
+      // Ring plane coordinates: the side axis is squashed by the tilt, which is what turns a
+      // circle into the ellipse a ring is always seen as.
+      float rv=v/max(st,0.06);
+      float rr=sqrt(u*u+rv*rv);
+      if(rr>1.18&&rr<B.w){
+        float band=rr;
+        // Cassini-style gaps: a couple of hard divisions plus fine banding.
+        float g1=1.0-exp(-pow((band-1.62)*26.0,2.0));
+        float g2=1.0-exp(-pow((band-2.05)*40.0,2.0));
+        float fine=0.72+0.28*sin(band*52.0);
+        float edge=smoothstep(1.18,1.30,band)*(1.0-smoothstep(B.w-0.22,B.w,band));
+        ringA=edge*g1*g2*fine*0.72;
+        ringCol=mix(vec3(0.74,0.66,0.54),vec3(0.90,0.86,0.78),fine)
+               *sunRad*0.31830988618*1.5;
+        // The planet's shadow falls across the far side of the ring.
+        float shadow=1.0-0.65*smoothstep(0.30,0.0,dot(dir,sunDir))*(1.0-smoothstep(0.0,1.0,rr-1.0));
+        ringCol*=shadow;
+      }
+    }
+    // Behind the disc: composite the ring first, then let the sphere cover it.
+    if(ringA>0.001&&v<0.0){ acc+=ringCol*ringA*B.y; cover=max(cover,ringA*0.9); }
+
+    // ---- the sphere -------------------------------------------------------
+    if(r2<=1.0){
+      float zn=sqrt(max(0.0,1.0-r2));
+      vec3 Nw=normalize(T*u+Bt*v-dir*zn);
+      float ndl=dot(Nw,sunDir);
+      float lit=wrapDiffuse(ndl,kind==1?0.14:0.08);
+      vec3 base = kind==0 ? vec3(0.52,0.49,0.45)
+                : kind==1 ? vec3(0.80,0.82,0.86)
+                          : vec3(0.72,0.64,0.50);
+      if(kind==0){
+        base*=moonCraters(Nw,sunDir);
+        // Maria: broad dark plains, which is the other half of a rock moon's read.
+        float mare=fbmd(vec2(atan(Nw.z,Nw.x)*1.6,Nw.y*2.2),3,2.11,0.55).x*0.5+0.5;
+        base*=mix(0.72,1.06,smoothstep(0.40,0.66,mare));
+      } else if(kind==2){
+        // Latitudinal cloud belts, sheared so they are not straight lines.
+        float lat=Nw.y;
+        float shear=noise2(vec2(atan(Nw.z,Nw.x)*2.1,lat*3.0))*0.16;
+        float belt=0.5+0.5*sin((lat+shear)*17.0);
+        base*=mix(0.80,1.14,belt);
+        base=mix(base,vec3(0.86,0.78,0.62),smoothstep(0.72,0.98,abs(lat))*0.5);
+      }
+      acc+=base*sunRad*0.31830988618*lit*B.y;
+      // Night side lit by the system, not black.
+      acc+=base*vec3(0.020,0.026,0.042)*B.y*smoothstep(0.12,-0.42,ndl);
+      // Limb darkening for the giant, a hard edge for the airless bodies.
+      if(kind==2) acc*=mix(1.0,0.80,smoothstep(0.55,1.0,r2));
+      cover=1.0;
+    } else {
+      // A thin forward-scattered rim outside the giant's limb only.
+      if(kind==2){
+        float halo=exp(-(sqrt(r2)-1.0)*11.0);
+        acc+=vec3(0.60,0.52,0.40)*halo*halo*B.y*0.5;
+        cover=max(cover,halo*halo*0.4);
+      }
+    }
+    // In front of the disc.
+    if(ringA>0.001&&v>=0.0){ acc+=ringCol*ringA*B.y; cover=max(cover,ringA*0.9); }
+  }
+  return acc;
+}
+
 // --- aurora curtain -------------------------------------------------------
 float auroraCurtain(float band,float lon,float t,float drift,float phase){
   // Warp the band so the curtain snakes instead of running as a latitude line.
@@ -3556,6 +3783,21 @@ void main(){
   float skyLum=dot(col,vec3(0.2126,0.7152,0.0722));
   float night=exp(-skyLum*9.0);
   col+=starField(rd,uClock,uPlanetP.z*night);
+  // Behind the bodies and in front of the stars, so the arm reads as depth rather
+  // than as haze. Keyed to the same night term the stars are, for the same reason:
+  // a nebula visible through a lit atmosphere is a nebula painted on the inside of
+  // one, and the sky LUT's own brightness is the only honest gate for that.
+  col+=nebula(rd,uPlanetP.z*night*uNebulaGain);
+
+  // ---- companion bodies -------------------------------------------------
+  // Composited before the False Earth so the big body can occlude them, and hazed
+  // by the same air, so a moon low on the horizon sinks into it.
+  float moonCover=0.0;
+  vec3 moons=companions(rd,uSunDir,uSunRadiance,moonCover);
+  if(moonCover>0.001){
+    float mhaze=smoothstep(0.24,-0.05,rd.y);
+    col=mix(col,mix(moons,col,mhaze*0.72),moonCover);
+  }
 
   // ---- the False Earth --------------------------------------------------
   float planetCover=0.0;
@@ -3927,6 +4169,21 @@ const UB = {
   uPlanetDir: { value: new THREE.Vector3(0, 0.34, -0.94).normalize() },
   uPlanetP: { value: new THREE.Vector4(0.52, 1.0, 1.0, 1.0) },
   uPlanetQ: { value: new THREE.Vector4(1.0, 1.0, 1.0, 0.0) },
+  /**
+   * Three companion bodies. A. is (direction, sin angular radius) and B. is
+   * (kind, brightness, ring tilt, ring extent), with a radius of zero switching a
+   * slot off — an array rather than three named triples because the dome loops over
+   * them and an unrolled version would be three copies of the same eighty lines.
+   */
+  uMoonA: {
+    value: [new THREE.Vector4(0, 0, 0, 0), new THREE.Vector4(0, 0, 0, 0),
+      new THREE.Vector4(0, 0, 0, 0)],
+  },
+  uMoonB: {
+    value: [new THREE.Vector4(0, 1, 0.42, 2.4), new THREE.Vector4(1, 1, 0, 0),
+      new THREE.Vector4(2, 1, 0.42, 2.4)],
+  },
+  uNebulaGain: { value: 1 },
   /**
    * (medium id, erosion gain, vertical sink m, wetness 0..1) — see MEDIA. The wake
    * beauty pass, its two shadow variants and its prepass all read it, which is why
@@ -5200,7 +5457,12 @@ class Terrain {
     this.deform.update(dt, playerPos);
     UB.uDeform.value = this.deform.texture;
     UB.uDeformCenter.value.set(this.deform.centerX, this.deform.centerZ);
-    UB.uDeformScale.value = 1;
+    // How much of the deformation field the ground actually shows. It was pinned to
+    // 1 while being threaded through six programs, so every world took a footprint
+    // like unpacked snow: a basalt shelf held a boot print as deep as a dune, and an
+    // ice sheet held one at all. Loose granular media take the full trench, ice
+    // takes a scuff, and rock takes almost nothing.
+    UB.uDeformScale.value = Medium.dry.groundBite;
   }
 }
 /* =========================================================================
@@ -5659,7 +5921,12 @@ class CharacterController {
       // Below planing speed a hull is pushing water rather than skimming over it,
       // so the drag is far higher — the hump every displacement hull has to climb
       // through before it will accelerate freely.
-      const hump = water ? 1 + 2.4 * (1 - this.plane) : 1;
+      let hump = water ? 1 + 2.4 * (1 - this.plane) : 1;
+      // The shallow band, which is the one case that had no drag at all. Under
+      // float depth the medium is still the bed, so none of the water terms above
+      // applied — and a walk pays a wade penalty there while a board did not, which
+      // made riding through ankle-deep water faster than walking through it.
+      if (!water) hump += 2.1 * smooth01(this.waterDepth / SURF_FLOAT_DEPTH);
       const drag = (m.drag * s * s * 0.02 + 0.9) * hump;
       const k = Math.max(0, s - drag * h) / s;
       this.velocity.x *= k; this.velocity.z *= k;
@@ -11766,7 +12033,7 @@ class WaterWorldRig {
    * and the helm are not fighting over the same keys.
    */
   _shouldSail() {
-    return !!S.showVessel && SAIL_REALM_BIOMES.has(Biome.key) && Ocean.on
+    return !!S.showVessel && capsForBiome(Biome.key).sail && Ocean.on
       && !input.surf;
   }
   _embark(controller) {
@@ -15829,7 +16096,12 @@ class Pilot {
     this.hasFocus = false;
     this.shot = "FOLLOW";
     this.shotT = 0;
-    this.tally = { masses: 0, metres: 0, realms: 0, tasks: 0, seconds: 0 };
+    this.tally = {
+      masses: 0, metres: 0, realms: 0, tasks: 0, seconds: 0,
+      // Autonomy's own failure record. A monitor that only counts successes cannot
+      // be used to tell whether the agent is having a good run or a bad one.
+      recoveries: 0, abandoned: 0, partial: 0,
+    };
     this.events = [];             // consumed by the ledger for title cards
     this.log = [];                // completed tasks, newest last
   }
@@ -15866,12 +16138,24 @@ class Pilot {
   nextTask() {
     if (!this.plan || this.state === ST_SIGNOFF) return;
     if (this.task) {
-      this.task.state = "built";
+      // An item that abandoned a leg or lost a mass to capacity closes PARTIAL, not
+      // BUILT. The state machine only ever had queued/active/built, so every item
+      // closed as a success no matter what happened inside it.
+      const short = (this.task.abandoned || 0) + (this.task.dropped || 0);
+      this.task.state = short ? "partial" : "built";
       this.task.progress = 1;
       this.log.push(this.task);
       this.tally.tasks++;
-      this.emit("task-done", this.task.label, this.plan.realm.seat + " · ITEM "
-        + this.task.id + " OF " + this.plan.tasks.length + " COMPLETE");
+      if (short) {
+        this.tally.partial++;
+        this.tally.abandoned += short;
+        this.emit("task-partial", this.task.label,
+          this.plan.realm.seat + " · ITEM " + this.task.id + " CLOSED PARTIAL · "
+          + short + (short === 1 ? " ITEM" : " ITEMS") + " SHORT");
+      } else {
+        this.emit("task-done", this.task.label, this.plan.realm.seat + " · ITEM "
+          + this.task.id + " OF " + this.plan.tasks.length + " COMPLETE");
+      }
     }
     this.taskIndex++;
     // The charter is written out. Whether the realm actually changes hands is the
@@ -15970,11 +16254,18 @@ class Pilot {
     if (!this.plan || this.state === ST_SIGNOFF) return;
     const c = this.ctx;
     this.tally.realms++;
-    const built = c.structures.masses.length;
-    const km = (c.conduits.metres / 1000).toFixed(2);
+    // The same two figures the grand totals use. This card read
+    // structures.masses.length — which counts every synthesised pad, roughly double
+    // — and conduits.metres, which is credited when a link is *routed* rather than
+    // walked. So the hero card and the panel under it disagreed about both numbers.
+    const built = this.tally.masses;
+    const km = (this.tally.metres / 1000).toFixed(2);
+    const short = this.tally.abandoned;
     this.emit("realm-done", this.plan.realm.seat + " COMMISSIONED",
-      built + " MASSES · " + km + " KM CAUSEWAY · REALM "
-      + this.plan.realm.numeral + " STANDS");
+      built + " MASSES · " + km + " KM CAUSEWAY · "
+      + Works.tally.handedOver + " SYSTEMS PROVEN"
+      + (short ? " · " + short + " SHORT" : "")
+      + " · REALM " + this.plan.realm.numeral + " STANDS");
     // Every mass lights fully at handover, and the camera goes wide for it.
     for (const m of c.structures.masses) { m.lit = 1; m.grow = 1; c.structures.write(m); }
     this.task = null;
@@ -16123,9 +16414,11 @@ class Pilot {
     // the board on the swell it was crossing. Deep water is now the *reason* to
     // ride: past float depth in a surf realm there is nothing to walk on, so the
     // distance gate comes down to what a wave is worth catching for.
-    const afloat = c.controller.waterDepth > SURF_FLOAT_DEPTH
-      && SURF_REALM_BIOMES.has(Biome.key);
-    const wantSurf = S.autoSurf && c.controller.stamina > 0.42
+    // Whether this realm rides at all is the manifest's call — a world whose
+    // traversal column says boots walks, however far the leg is.
+    const caps = capsForBiome(Biome.key);
+    const afloat = c.controller.waterDepth > SURF_FLOAT_DEPTH && caps.surf;
+    const wantSurf = S.autoSurf && caps.surf && c.controller.stamina > 0.42
       && (afloat ? dist > 26 : (dist > 95 && c.controller.waterDepth < 0.3));
     input.surf = wantSurf;
     if (wantSurf) {
@@ -16149,14 +16442,33 @@ class Pilot {
     else this.stuck = Math.max(0, this.stuck - dt * 2);
     if (this.stuck > 2.2) {
       this.stuck = 0;
-      // Sidestep, then let the seek re-converge.
+      // Sidestep, then let the seek re-converge. Counted and announced: this is the
+      // one genuine autonomy failure the engine already handled, and it used to do
+      // it completely silently — no event, no tally, nothing an operator could see.
       a.x = p.x + (dz / dist) * 26; a.z = p.z - (dx / dist) * 26;
       a.d0 = undefined;
+      this.tally.recoveries++;
+      if (this.task) this.task.recoveries = (this.task.recoveries || 0) + 1;
+      this.emit("recovered", "WEDGED — SIDESTEPPING",
+        (this.task ? this.task.label + " · " : "")
+        + "TERRAIN REFUSED THE APPROACH · RECOVERY "
+        + this.tally.recoveries);
     }
     // Budget on the distance, not a constant: roughly a metre and a half a
     // second plus half a minute of slack, which is generous against a walk and
     // still bounded against a genuine wedge.
-    if (a.t > 30 + a.d0 / 1.5) return true;
+    //
+    // Running out of budget is an ABANDONMENT, not an arrival. Reporting it as the
+    // same `true` an arrival returns is how a stranded leg lit its pip, credited
+    // full progress and left the ledger telling a success story about a walk that
+    // never finished.
+    if (a.t > 30 + a.d0 / 1.5) {
+      a.abandoned = true;
+      if (this.task) this.task.abandoned = (this.task.abandoned || 0) + 1;
+      this.emit("task-blocked", "LEG ABANDONED",
+        (this.task ? this.task.label + " · " : "") + "COULD NOT REACH THE STAND-OFF");
+      return true;
+    }
     return false;
   }
 
@@ -16248,9 +16560,22 @@ class Pilot {
     const tx = l.bx, tz = l.bz;
     const ddx = tx - p.x, ddz = tz - p.z;
     const dist = Math.hypot(ddx, ddz);
-    if (dist < 4.5 || along > 0.985 || a.t > 40 + l.length / 1.4) {
-      if (l.progress < 1) this.tally.metres += l.length;
-      l.progress = 1; c.conduits.write(l);
+    const arrived = dist < 4.5 || along > 0.985;
+    const outOfTime = a.t > 40 + l.length / 1.4;
+    if (arrived || outOfTime) {
+      // Credit the metres actually walked, not the whole causeway. Forcing
+      // progress to 1 on the timeout branch credited road nobody laid, which is
+      // why the commission card and the grand total disagreed about the kilometres.
+      const laid = arrived ? l.length : l.length * clamp01(l.progress);
+      if (l.progress < 1) this.tally.metres += laid;
+      if (arrived) { l.progress = 1; c.conduits.write(l); }
+      else {
+        a.abandoned = true;
+        if (this.task) this.task.abandoned = (this.task.abandoned || 0) + 1;
+        this.emit("task-blocked", "CAUSEWAY LEFT SHORT",
+          Math.round(l.length - laid) + " M UNPAVED · "
+          + (this.task ? this.task.label : "CAUSEWAY"));
+      }
       this.brake();
       return true;
     }
@@ -16454,7 +16779,7 @@ const ledger = {
       fabLabel: g("fabLabel"), fabPct: g("fabPct"), fabBar: g("fabBar"),
       seats: g("listSeats"), cSeats: g("cntSeats"), secCouncil: g("secCouncil"),
       tMass: g("tMass"), tKm: g("tKm"), tRealm: g("tRealm"), tUp: g("tUp"),
-      tPhase: g("tPhase"), tHold: g("tHold"),
+      tPhase: g("tPhase"), tHold: g("tHold"), tFail: g("tFail"),
       badge: g("autob"), badgeState: g("autoState"),
       card: g("card"), cardKind: g("cardKind"), cardTitle: g("cardTitle"),
       cardSub: g("cardSub"),
@@ -16489,12 +16814,16 @@ const ledger = {
     const done = pilot.log.slice().reverse();
     e.cBuilt.textContent = done.length + " / " + plan.tasks.length;
     let h = "";
-    for (const t of done.slice(0, 5)) {
-      h += '<div class="lrow built"><k>✓</k><span>' + t.label
+    for (const t of done.slice(0, 3)) {
+      // A partial item reads amber with a bang, because "built" and "built with a
+      // leg abandoned inside it" are different facts and the panel has to say which.
+      const part = t.state === "partial";
+      h += '<div class="lrow ' + (part ? 'part' : 'built') + '"><k>'
+        + (part ? '!' : '✓') + '</k><span>' + t.label
         + '</span><em>' + mmss(t.elapsed) + '</em></div>';
     }
-    if (done.length > 5) {
-      const n = done.length - 5;
+    if (done.length > 3) {
+      const n = done.length - 3;
       h += '<div class="lrow built"><k>·</k><span>+ ' + n + ' earlier item'
         + (n === 1 ? '' : 's') + '</span><em></em></div>';
     }
@@ -16505,12 +16834,12 @@ const ledger = {
     const rest = plan.tasks.slice(pilot.taskIndex + 1);
     e.cQueued.textContent = String(rest.length);
     let q = "";
-    for (const t of rest.slice(0, 6)) {
+    for (const t of rest.slice(0, 4)) {
       q += '<div class="lrow queued"><k>' + t.glyph + '</k><span>' + t.label
         + '</span><em>' + t.masses.length + '</em></div>';
     }
-    if (rest.length > 6) {
-      const n = rest.length - 6;
+    if (rest.length > 4) {
+      const n = rest.length - 4;
       q += '<div class="lrow queued"><k>·</k><span>+ ' + n + ' further item'
         + (n === 1 ? '' : 's') + ' on the charter</span><em></em></div>';
     }
@@ -16589,6 +16918,7 @@ const ledger = {
     e.tKm.textContent = (pilot.tally.metres / 1000).toFixed(2) + " km";
     e.tPhase.textContent = String(Works.tally.phasesDone);
     e.tHold.textContent = Works.tally.holdsRaised + " / " + Works.tally.holdsCleared;
+    e.tFail.textContent = pilot.tally.recoveries + " / " + pilot.tally.abandoned;
     e.tRealm.textContent = pilot.tally.realms + " / " + REALMS.length;
     e.tUp.textContent = hhmmss(pilot.tally.seconds);
   },
@@ -16609,34 +16939,50 @@ const ledger = {
     } else {
       e.secCouncil.style.display = "";
       e.cCells.textContent = Works.workingCells + " / " + Works.cells.length + " WORKING";
-      let h = "";
+      // Only the cells doing something get a line of their own. Nine rows of
+      // "waiting on the phase in front" is a wall that hides the two rows that
+      // matter, so the quiet ones are collapsed into a single tally — which is also
+      // the honest shape of the information: who is working, who is stuck, how many
+      // are neither.
+      let h = "", quietStarved = 0, quietIdle = 0;
       for (const c of Works.cells) {
-        let cls = "", what = c.name.toLowerCase(), pct = "";
         if (c.state === CELL_WORKING && c.item) {
-          cls = "work";
-          what = FAB_PHASES[c.item.phaseIndex].name.toLowerCase()
-            + " · " + c.item.rec.label.toLowerCase();
-          pct = (c.progress * 100).toFixed(0) + "%";
+          h += '<div class="wrow work"><k>' + c.tag + '</k><span>'
+            + FAB_PHASES[c.item.phaseIndex].name.toLowerCase() + ' · '
+            + c.item.rec.label.toLowerCase() + '</span><em>'
+            + (c.progress * 100).toFixed(0) + '%</em></div>';
         } else if (c.state === CELL_HOLD) {
-          cls = "hold";
-          what = c.holdWhy.toLowerCase();
-          pct = c.holdT.toFixed(0) + "s";
-        } else if (c.state === CELL_STARVED) {
-          cls = "starve"; what = "waiting on the phase in front"; pct = "—";
-        } else { what = "on station · " + what; pct = "idle"; }
-        h += '<div class="wrow ' + cls + '"><k>' + c.tag + '</k><span>' + what
-          + '</span><em>' + pct + '</em></div>';
+          h += '<div class="wrow hold"><k>' + c.tag + '</k><span>'
+            + c.holdWhy.toLowerCase() + '</span><em>'
+            + c.holdT.toFixed(0) + 's</em></div>';
+        } else if (c.state === CELL_STARVED) quietStarved++;
+        else quietIdle++;
+      }
+      if (quietStarved) {
+        h += '<div class="wrow starve"><k>' + quietStarved
+          + '×</k><span>queued behind the phase in front</span><em>—</em></div>';
+      }
+      if (quietIdle) {
+        h += '<div class="wrow"><k>' + quietIdle
+          + '×</k><span>on station · no work drawn</span><em>idle</em></div>';
       }
       e.cells.innerHTML = h;
 
       e.cSeats.textContent = Works.councilVotes + " / " + Works.council.length;
+      // The council only earns its three lines once it is actually sitting. Before
+      // that it is one line, because a realm two tasks in has nothing to review.
       let s = "";
-      for (const seat of Works.council) {
-        const cls = seat.hold ? "held" : seat.cleared ? "clear" : "";
-        s += '<div class="srow ' + cls + '"><k>' + (seat.cleared ? "✓" : seat.hold ? "!" : "·")
-          + '</k><span>' + seat.name.toLowerCase()
-          + (seat.hold ? '<i>' + seat.why.toLowerCase() + '</i>' : '')
-          + '</span></div>';
+      if (Works.council.some((q) => q.cleared || q.hold)) {
+        for (const seat of Works.council) {
+          const cls = seat.hold ? "held" : seat.cleared ? "clear" : "";
+          s += '<div class="srow ' + cls + '"><k>'
+            + (seat.cleared ? "✓" : seat.hold ? "!" : "·")
+            + '</k><span>' + seat.name.toLowerCase()
+            + (seat.hold ? '<i>' + seat.why.toLowerCase() + '</i>' : '')
+            + '</span></div>';
+        }
+      } else {
+        s = '<div class="srow"><k>·</k><span>not yet sitting · charter open</span></div>';
       }
       e.seats.innerHTML = s;
     }
@@ -16668,6 +17014,10 @@ const ledger = {
         this.cardQ.push({ kind: "TOPPED OUT", cls: "amber", title: ev.title, sub: ev.sub });
       } else if (ev.kind === "realm-open") {
         this.cardQ.push({ kind: "REALM OPENED", cls: "", title: ev.title, sub: ev.sub });
+      } else if (ev.kind === "task-partial") {
+        this.cardQ.push({ kind: "ITEM CLOSED PARTIAL", cls: "amber", title: ev.title, sub: ev.sub });
+      } else if (ev.kind === "recovered") {
+        this.cardQ.push({ kind: "AUTONOMY RECOVERED", cls: "amber", title: ev.title, sub: ev.sub });
       } else if (ev.kind === "works-open") {
         this.cardQ.push({ kind: "WORKFORCE ON STATION", cls: "", title: ev.title, sub: ev.sub });
       } else if (ev.kind === "works-hold" || ev.kind === "task-blocked") {
@@ -16742,6 +17092,7 @@ const chrome = {
       tide: g("tide"), tState: g("tideState"), vDepth: g("valDepth"),
       bDepth: g("barDepth"), vLevel: g("valLevel"), vSeaState: g("valState"),
       vSurge: g("valSurge"), vTau: g("valTau"), vMob: g("valMobility"),
+      vMedium: g("valMedium"), vFace: g("valFace"), vLock: g("valLock"),
       surge: g("surge"), surgeSub: g("surgeSub"),
       vitals: g("vitals"), bStam: g("barStam"), bBreath: g("barBreath"),
       vNote: g("vitalNote"),
@@ -16837,10 +17188,17 @@ const chrome = {
     else st = suit.mode >= 3 ? "HOLDING · SCANNING" : "STATION KEEPING";
     e.state.textContent = st;
 
+    // Mobility now names the medium it is actually on rather than guessing from the
+    // biome, so a board on the swell reads as a board on the swell.
     const afloat = waterRigRef && waterRigRef.active;
+    const med = (controller && controller.medium) || MEDIA.snow;
     e.vMob.textContent = afloat ? "LOKI CUTTER · DECK"
-      : (Biome.key === "floe" && Ocean.on ? "RIME BOOTS · ICE"
-        : controller && controller.surf > 0.35 ? "SURF-SKI · GLIDE" : "BOOTS · TERRAIN");
+      : controller && controller.surf > 0.35
+        ? med.verb.toUpperCase() + " · " + med.label
+        : (Ocean.on && controller && controller.swim > 0.5 ? "SWIMMING"
+          : "BOOTS · " + med.label);
+    e.vMedium.textContent = med.label
+      + (Medium.wet01 > 0.02 ? " · WET " + (Medium.wet01 * 100).toFixed(0) + "%" : "");
 
     // ---- hydrosphere ----
     e.tide.classList.toggle("dry", !Ocean.on);
@@ -16867,8 +17225,22 @@ const chrome = {
       }
       const tau = BIOMES[Biome.key].tau || 1;
       e.vTau.textContent = tau > 1.001 ? "1 : " + tau.toFixed(0) : "1 : 1";
-      e.tState.textContent = controller.waterDepth > 0.04
-        ? (controller.waterDepth > 1.0 ? "SUBMERGED" : "WADING") : "SHORE";
+      // The wave the rider is on: how steep the face is against how fast the wave
+      // itself is running, and how well trimmed the board is on it. These three were
+      // being computed every frame and read by nothing.
+      if (controller.onWave > 0.05) {
+        e.vFace.textContent = (controller.waveSteep * 100).toFixed(0) + "% · "
+          + controller.waveC.toFixed(1) + " m/s";
+        const lk = controller.lock;
+        e.vLock.textContent = lk > 0.55 ? "LOCKED IN " + (lk * 100).toFixed(0) + "%"
+          : lk > 0.15 ? "CATCHING " + (lk * 100).toFixed(0) + "%" : "OFF THE BACK";
+        e.vLock.className = lk > 0.55 ? "hot" : "";
+      } else {
+        e.vFace.textContent = "—"; e.vLock.textContent = "—"; e.vLock.className = "";
+      }
+      e.tState.textContent = controller.onWave > 0.5 ? "RIDING"
+        : controller.waterDepth > 0.04
+          ? (controller.waterDepth > 1.0 ? "SUBMERGED" : "WADING") : "SHORE";
     } else if (controller) {
       e.tState.textContent = "DRY";
     }
@@ -17191,6 +17563,25 @@ async function main() {
     UB.uPlanetQ.value.set(S.planetLight, S.planetHalo * show, 1.0, 0);
     UB.uWaveGain.value = S.waveGain;
 
+    // ---- companion bodies -------------------------------------------------
+    // Three of them, because one body in the sky reads as a backdrop and three read
+    // as a system. Each is placed on its own slow orbit rather than pinned, so the
+    // sky is different on the ninth realm than it was on the first — the periods are
+    // deliberately incommensurate so the arrangement never repeats within a session.
+    const mshow = S.showMoons ? 1 : 0;
+    const t = UB.uTime.value * S.moonDrift;
+    for (let i = 0; i < 3; i++) {
+      const cfg = MOON_SET[i];
+      const az = (cfg.az * Math.PI) / 180 + t * cfg.rate;
+      const el = ((cfg.el + Math.sin(t * cfg.rate * 0.37 + i) * cfg.wobble) * Math.PI) / 180;
+      const ce = Math.cos(el);
+      UB.uMoonA.value[i].set(Math.sin(az) * ce, Math.sin(el), Math.cos(az) * ce,
+        cfg.size * S.moonScale * mshow);
+      UB.uMoonB.value[i].set(cfg.kind, cfg.bright * S.moonLight,
+        cfg.ringTilt, cfg.ringExtent);
+    }
+    UB.uNebulaGain.value = S.nebulaGain;
+
     // ---- atmosphere bias --------------------------------------------------
     // A multiplier on the viewer's own sliders, never a replacement for them.
     const at = Biome.live.atmos;
@@ -17402,7 +17793,7 @@ async function main() {
     spells, terrain, sky, shadows, post, overlay, graph, S, input, perf, UB,
     suit, suitRender, suitContact, waves, beams, Biome, BIOMES, chrome,
     Ocean, sea, waterRig, applyBiome, SUIT_LIVERY, BINDINGS, latch, pollGamepad,
-    Medium, MEDIA, BIOME_MEDIUM, SAIL_REALM_BIOMES, SURF_REALM_BIOMES,
+    Medium, MEDIA, BIOME_MEDIUM, traversalCaps, capsForBiome, BIOME_REALM, MOON_SET,
     structures, conduits, pilot, director, ledger, REALMS, SYSTEM_MANIFEST,
     Works, FAB_PHASES, CELL_ROSTER, COUNCIL_SEATS,
     ObjectSculptSpec, NexusIterationSpec, planRealm,
