@@ -3965,6 +3965,12 @@ class Sky {
         uPlanetDir: UB.uPlanetDir,
         uPlanetP: UB.uPlanetP,
         uPlanetQ: UB.uPlanetQ,
+        // The companions and the nebula are bound by name for the same reason the
+        // planet is: this dome takes an explicit uniform list, and a uniform that
+        // is only in the bank is a uniform this material never receives.
+        uMoonA: UB.uMoonA,
+        uMoonB: UB.uMoonB,
+        uNebulaGain: UB.uNebulaGain,
       }, shared()),
       depthTest: false, depthWrite: false,
     }));
