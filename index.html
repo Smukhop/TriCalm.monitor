@@ -270,6 +270,42 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;background:v
 .lstep i{flex:1;height:2px;background:rgba(120,150,190,.16);font-style:normal}
 .lstep i.on{background:var(--cyan);box-shadow:0 0 7px rgba(95,216,255,.7)}
 
+/* the resident workforce — nine cells, each one line, state in the colour */
+.wrow{display:grid;grid-template-columns:34px minmax(0,1fr) 26px;gap:0 6px;
+  align-items:baseline;font-size:8.5px;letter-spacing:.06em;padding:1px 0;
+  color:rgba(125,147,171,.55)}
+.wrow k{text-decoration:none;color:rgba(120,150,190,.62);font-size:8px;
+  letter-spacing:.10em}
+.wrow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wrow em{font-style:normal;font-size:7.5px;text-align:right;
+  font-variant-numeric:tabular-nums;color:rgba(125,147,171,.45)}
+.wrow.work{color:rgba(160,196,226,.92)}
+.wrow.work k{color:var(--cyan)}
+.wrow.work em{color:var(--cyan)}
+/* A hold is the one state worth interrupting a reader for, so it is the one that
+   gets a colour of its own rather than a shade of the same one. */
+.wrow.hold{color:#ffbd6a}
+.wrow.hold k{color:#ff9b3d}
+.wrow.hold em{color:#ff9b3d}
+.wrow.starve{color:rgba(150,140,175,.66)}
+.wrow.starve k{color:rgba(168,150,205,.8)}
+.wfab{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  margin-top:6px;font-size:8px;letter-spacing:.18em;color:var(--dim)}
+.wfab em{font-style:normal;color:var(--cyan);font-size:8.5px;
+  font-variant-numeric:tabular-nums}
+/* three council seats — a pip, the remit, and what it is holding on */
+.srow{display:grid;grid-template-columns:12px minmax(0,1fr);gap:0 7px;
+  align-items:baseline;font-size:8.5px;letter-spacing:.06em;padding:1.5px 0;
+  color:rgba(125,147,171,.55)}
+.srow k{text-decoration:none;text-align:center;font-size:9px;
+  color:rgba(120,150,190,.45)}
+.srow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow i{font-style:normal;display:block;font-size:7.5px;letter-spacing:.08em;
+  color:rgba(255,155,61,.78)}
+.srow.clear{color:rgba(111,227,176,.85)}
+.srow.clear k{color:var(--jade)}
+.srow.held k{color:#ff9b3d}
+
 /* ------------------------------------------------------- autonomy annunciator */
 #autob{position:fixed;right:18px;top:16px;z-index:22;display:flex;align-items:center;
   gap:8px;padding:7px 13px;border:1px solid var(--line);background:var(--glass);
@@ -341,7 +377,7 @@ body.idle #view{cursor:none}
 <div id="hint">autonomy engaged &mdash; p stand down &middot; l ledger &middot; n skip item &middot; m skip realm &middot; water realms embark the Loki cutter automatically &middot; click to take the controls &middot; f1 overlay</div>
 
 <div id="charter">
-  <div class="ch"><b id="chRealm">REALM I</b><i id="chIdx">CHARTER 1 / 10</i></div>
+  <div class="ch"><b id="chRealm">REALM I</b><i id="chIdx">CHARTER 1 / 9</i></div>
   <div class="seat" id="chSeat">SIROCCO STATION</div>
   <div class="cht" id="chNote">hold the dune sea · anchor the first grid</div>
   <div id="realmring"></div>
@@ -366,10 +402,24 @@ body.idle #view{cursor:none}
     <div id="listQueued"></div>
   </div>
 
+  <div class="lsec" id="secWorks">
+    <h4>AGENT CELLS <span id="cntCells">—</span></h4>
+    <div id="listCells"></div>
+    <div class="wfab"><span id="fabLabel">FABRICATION</span><em id="fabPct">0%</em></div>
+    <div class="lbar"><s id="fabBar"></s></div>
+  </div>
+
+  <div class="lsec" id="secCouncil">
+    <h4>MINATO COUNCIL <span id="cntSeats">0 / 3</span></h4>
+    <div id="listSeats"></div>
+  </div>
+
   <div class="grand">
     <u>MASSES RAISED</u><em id="tMass">0</em>
     <u>CAUSEWAY LAID</u><em id="tKm">0.00 km</em>
-    <u>REALMS COMMISSIONED</u><em id="tRealm">0 / 10</em>
+    <u>PHASES CLOSED</u><em id="tPhase">0</em>
+    <u>HOLDS RAISED / CLEARED</u><em id="tHold">0 / 0</em>
+    <u>REALMS COMMISSIONED</u><em id="tRealm">0 / 9</em>
     <u>UPTIME</u><em id="tUp">00:00:00</em>
   </div>
 </div>
@@ -700,7 +750,7 @@ const SCHEMA = [
   { group: "Biosphere", items: [
     { k: "biome", l: "Terraform", t: "e",
       opts: ["glacis", "verdant", "ochre", "magma", "abyss", "regolith",
-             "tidal", "shoal", "floe"] },
+             "tidal", "shoal", "verdigris", "floe"] },
     { k: "terraformRate", l: "Dissolve rate", t: "f", min: 0.1, max: 4, step: 0.05 },
     { k: "veinGlow", l: "Vein glow", t: "f", min: 0, max: 3, step: 0.01 },
     { k: "biomeAtmos", l: "Biome atmosphere", t: "b" },
@@ -990,7 +1040,122 @@ const BIOMES = {
   },
 };
 const BIOME_ORDER = ["glacis", "verdant", "ochre", "magma", "abyss", "regolith",
-  "tidal", "shoal", "floe"];
+  "tidal", "shoal", "verdigris", "floe"];
+
+/* =========================================================================
+ * Traversal media.
+ *
+ * A board behaves like a board on five surfaces and the differences are not
+ * decoration. Snow and ice are solid, so grip is an edge biting a surface whose
+ * normal can be read straight out of the heightfield, and the gain comes from
+ * gravity down a face. Ice gives almost no grip and almost no drag, so a carve
+ * becomes a long drift and top speed is high. Sand is solid but lossy — it gives
+ * way under the edge, so grip is high but the drag rises hard with speed and the
+ * ceiling is low. Basalt is hard and fast with nothing to throw.
+ *
+ * Water is not solid at all. There is no standing on it: the gain comes from the
+ * slope of a surface that is itself moving, it only arrives while the board is on
+ * the face of a wave, and a rider who stops matching the wave's celerity drops off
+ * the back of it. That asymmetry is why `water` carries three fields none of the
+ * others use, and why the controller branches rather than just re-tuning.
+ *
+ * One descriptor per medium, read by the surf integrator, the wake mesh, the spray
+ * emitter and — through the uniform bank — by four shader programs. The previous
+ * arrangement had these numbers as literals in six places, all of them snow.
+ * ========================================================================= */
+const MEDIA = {
+  snow: {
+    id: 0, label: "SNOW", verb: "snow-surf",
+    thrust: 11.0, drag: 0.42, turn: 2.35, grip: 7.5, slopeGain: 26, max: 19.5,
+    onsetSpeed: 2.2, satSpan: 9.0, surfGate: 0.06,
+    throwGain: 1.00, curlGain: 1.00, erodeGain: 1.00, sink: 0.10,
+    sprayKind: 0, sprayPerMetre: 88, clods: true, plumeSpeedGate: 3.0,
+  },
+  ice: {
+    id: 1, label: "ICE", verb: "rime-surf",
+    // Almost no grip and almost no drag: the carve becomes a drift, and the
+    // ceiling is the highest of the five because nothing is taking energy back.
+    thrust: 8.6, drag: 0.19, turn: 1.72, grip: 3.1, slopeGain: 34, max: 26.0,
+    onsetSpeed: 1.7, satSpan: 12.0, surfGate: 0.05,
+    throwGain: 0.34, curlGain: 0.45, erodeGain: 0.28, sink: 0.04,
+    sprayKind: 0, sprayPerMetre: 40, clods: true, plumeSpeedGate: 5.0,
+  },
+  sand: {
+    id: 2, label: "SAND", verb: "dune-surf",
+    // High grip, heavy drag, low ceiling — and the biggest plume of the five,
+    // because dry sand is the loosest thing here and barely holds a curl.
+    thrust: 10.2, drag: 0.74, turn: 2.62, grip: 9.6, slopeGain: 22, max: 16.5,
+    onsetSpeed: 2.6, satSpan: 8.0, surfGate: 0.07,
+    throwGain: 0.62, curlGain: 0.22, erodeGain: 0.42, sink: 0.14,
+    sprayKind: 0, sprayPerMetre: 130, clods: false, plumeSpeedGate: 2.6,
+  },
+  basalt: {
+    id: 3, label: "BASALT", verb: "rock-skate",
+    thrust: 9.2, drag: 0.52, turn: 2.10, grip: 8.2, slopeGain: 24, max: 17.5,
+    onsetSpeed: 3.0, satSpan: 9.0, surfGate: 0.08,
+    throwGain: 0.10, curlGain: 0.06, erodeGain: 0.55, sink: 0.02,
+    sprayKind: 1, sprayPerMetre: 26, clods: true, plumeSpeedGate: 6.0,
+  },
+  water: {
+    id: 4, label: "WATER", verb: "wave-surf",
+    // Thrust is low because a surfboard has no motor: nearly all of the drive is
+    // `slopeGain` against a moving face, which is why that number is the largest
+    // here and why `catchGain` and `dropRate` exist at all.
+    thrust: 5.8, drag: 0.31, turn: 2.95, grip: 4.4, slopeGain: 30, max: 22.0,
+    onsetSpeed: 1.4, satSpan: 10.0, surfGate: 0.05,
+    throwGain: 0.58, curlGain: 1.45, erodeGain: 0.16, sink: -0.02,
+    sprayKind: 2, sprayPerMetre: 96, clods: false, plumeSpeedGate: 2.2,
+    /** Extra drive while the board is trimmed on a steep face and near celerity. */
+    catchGain: 15.0,
+    /** How fast the lock bleeds away once the wave outruns the board. */
+    dropRate: 1.35,
+    /** Speed at which the hull stops displacing and starts planing. */
+    planeSpeed: 6.4,
+  },
+};
+const MEDIA_ORDER = ["snow", "ice", "sand", "basalt", "water"];
+
+/**
+ * Which medium each world's dry surface is. Water is never listed here because it
+ * is resolved per-sample from the depth the rider is standing in — a shoal world
+ * is sand above the waterline and water below it, in the same frame.
+ */
+const BIOME_MEDIUM = {
+  glacis: "snow", verdant: "sand", ochre: "sand", magma: "basalt",
+  abyss: "ice", regolith: "sand", tidal: "sand", shoal: "sand",
+  verdigris: "sand", floe: "ice",
+};
+
+/** Depth at which the board stops reading the bed and starts reading the swell. */
+const SURF_FLOAT_DEPTH = 0.85;
+
+/**
+ * The live medium. Resolved once a frame from the biome and the water depth under
+ * the player, then read by everything that needs to know what is underfoot. Held
+ * as a single object rather than a string so the hot paths compare numbers.
+ */
+const Medium = {
+  key: "snow",
+  now: MEDIA.snow,
+  /** The dry medium of the loaded biome, ignoring any water over it. */
+  dry: MEDIA.snow,
+  wet01: 0,
+
+  resolve(depth) {
+    this.dry = MEDIA[BIOME_MEDIUM[Biome.key] || "snow"];
+    const wet = Ocean.on && depth > SURF_FLOAT_DEPTH;
+    this.wet01 = Ocean.on ? clamp01((depth - SURF_FLOAT_DEPTH * 0.5) / SURF_FLOAT_DEPTH) : 0;
+    const k = wet ? "water" : (BIOME_MEDIUM[Biome.key] || "snow");
+    this.key = k;
+    this.now = MEDIA[k];
+    return this.now;
+  },
+
+  push() {
+    const m = this.now;
+    UB.uWakeMed.value.set(m.id, m.erodeGain, m.sink, this.wet01);
+  },
+};
 
 /* -------------------------------------------------------------------------
  * One system manifest, not a separate list in the monitor, HUD and gameplay.
@@ -1046,6 +1211,16 @@ const AVATAR_SOURCE = Object.freeze({
 });
 const WATER_REALM_BIOMES = new Set(["tidal", "shoal"]);
 const ICE_ROUTE_BIOMES = new Set(["glacis", "floe"]);
+/**
+ * Which realms the cutter is the traversal contract for. Wider than
+ * WATER_REALM_BIOMES on purpose: `verdigris` is a fully authored jade sea that was
+ * unreachable through the biome cycle and never got a hull, and `floe` is a hull
+ * working *through* pack ice — the reference plate for the whole ice route — which
+ * the old on-foot-only rule made impossible to stage.
+ */
+const SAIL_REALM_BIOMES = new Set(["tidal", "shoal", "verdigris", "floe"]);
+/** Realms where holding surf puts a board on the water instead of a hull. */
+const SURF_REALM_BIOMES = new Set(["tidal", "shoal", "verdigris", "abyss", "floe"]);
 
 /* The water-world asset contract is data, not a one-off pile of mesh calls.
  * It makes the structural and gameplay intent inspectable from the monitor. */
@@ -3032,6 +3207,11 @@ G.wake = `
 //   row 0  (x, y, z, distance behind bow, metres)
 //   row 1  (rightX, rightZ, amplitude left, amplitude right)
 //   row 2  (curl left, curl right, age 0..1, unused)
+// (medium id, erosion gain, vertical sink m, wetness 0..1). Declared here because
+// this chunk is the one thing all four wake programs share, and a uniform declared
+// per-program is a uniform one of the four will eventually be missing.
+uniform vec4 uWakeMed;
+
 const int WAKE_STEPS=20;
 // Normalises the integral so the crest lands near 1.0, letting amplitude be one
 // number in metres rather than a per-curl table.
@@ -3130,8 +3310,12 @@ vec3 wakePoint(sampler2D tex,float count,float u,float q,float side,float t){
   // Thrown snow lags the thing that threw it, so the lip trails backward along
   // the spine. Shear rather than offset: the surface stays connected.
   float along=-q*q*0.34*sc.x;
+  // The vertical sink clears the berm the contact pass brushes into the deform
+  // field. How much berm there is depends on the medium — sand piles, ice barely
+  // does, and water has none at all and wants the sheet a shade *above* the
+  // surface — so it comes from the medium rather than being a fixed fudge.
   return pos + rgt*(side*lat)
-             + vec3(0.0,(sec.y+secN.y*lump)*sc.x-0.10,0.0)
+             + vec3(0.0,(sec.y+secN.y*lump)*sc.x-uWakeMed.z,0.0)
              + fwd*along;
 }
 
@@ -3140,8 +3324,11 @@ vec3 wakePoint(sampler2D tex,float count,float u,float q,float side,float t){
 // at the end of its life. Tearing the top *half* into chunks reads as a
 // breaking wave in a still frame and as a mesh with holes in motion.
 bool wakeEroded(float alongDist,float q,float age01,float t){
-  float brk=smoothstep(0.84,1.06,q)*mix(0.34,0.70,age01)
-          + smoothstep(0.68,1.0,age01)*0.95;
+  // Scaled by the medium: dry powder tears itself apart, a water lip holds together
+  // until it actually breaks, and basalt grit barely forms a wall to erode. At a
+  // gain of zero the early-out below makes this function free.
+  float brk=(smoothstep(0.84,1.06,q)*mix(0.34,0.70,age01)
+          + smoothstep(0.68,1.0,age01)*0.95)*uWakeMed.y;
   if(brk<=0.001) return false;
   // Both octaves sheared off the axes and counter-drifting in time, so their
   // sum boils rather than scrolls: holes open, close and migrate, so the lip is
@@ -3740,6 +3927,18 @@ const UB = {
   uPlanetDir: { value: new THREE.Vector3(0, 0.34, -0.94).normalize() },
   uPlanetP: { value: new THREE.Vector4(0.52, 1.0, 1.0, 1.0) },
   uPlanetQ: { value: new THREE.Vector4(1.0, 1.0, 1.0, 0.0) },
+  /**
+   * (medium id, erosion gain, vertical sink m, wetness 0..1) — see MEDIA. The wake
+   * beauty pass, its two shadow variants and its prepass all read it, which is why
+   * it lives in the shared bank rather than in the wake's own uniform map: four
+   * programs is four places to forget one, and a wake whose depth pass disagrees
+   * with its beauty pass about where the lip is shadow-acnes against itself.
+   *
+   * `throwGain` and `curlGain` are deliberately *not* here. They scale the
+   * amplitude and curl the driver writes into the spine texture, so they are
+   * applied once on the CPU rather than re-applied per vertex in four programs.
+   */
+  uWakeMed: { value: new THREE.Vector4(0, 1, 0.10, 0) },
 };
 /**
  * Uniforms every beauty material gets whether it asked or not.
@@ -3758,6 +3957,7 @@ const ALWAYS_SHARED = [
   // disagrees with itself.
   "uSeaA", "uSeaB", "uSeaC", "uSeaD", "uSurge",
   "uSeaDeep", "uSeaShal", "uSeaFoam", "uSeaSand", "uWade",
+  "uWakeMed",
 ];
 /** Pull a subset of the bank into a material's uniform map, by reference. */
 function shared(...names) {
@@ -5170,9 +5370,14 @@ class RenderGraph {
  *        phase so footfalls land where the feet actually are.
  *  SURF  momentum-carrying. Thrust along facing, steering from mouse yaw, strong
  *        lateral grip that bleeds into a drift as you push the carve, and
- *        slope-driven acceleration so dropping down a dune face is a gain.
+ *        slope-driven acceleration so dropping down a face is a gain.
  *
  * Blending between them is eased in both directions; there is no snap.
+ *
+ * SURF resolves its constants from the medium underfoot (see MEDIA) rather than
+ * from one set of snowboard literals, and on water it takes a second integrator:
+ * the surface it rides is itself moving, so the drive comes from the slope of a
+ * travelling wave and holding it means matching that wave's celerity.
  * ========================================================================= */
 const WALK_SPEED = 2.5, RUN_SPEED = 5.4, WALK_ACCEL = 26, WALK_DECEL = 30;
 /**
@@ -5185,6 +5390,10 @@ const SWIM_SPEED = 1.75, SWIM_FAST = 2.85;
 /** Root height below the surface when floating, and when holding a dive down. */
 const FLOAT_SINK = 0.42, DIVE_SINK = 2.25;
 const EYE_HEIGHT = 1.62;
+/**
+ * The reference board. Every medium is quoted against these, so `MEDIA.snow` is
+ * the identity row and the numbers below are still the ones the file shipped with.
+ */
 const SURF_MAX = 19.5, SURF_THRUST = 11.0, SURF_DRAG = 0.42, SURF_TURN = 2.35, SURF_GRIP = 7.5;
 /** Metres of travel per full stride cycle, scaled by speed. */
 const STRIDE_BASE = 1.55;
@@ -5227,8 +5436,20 @@ class CharacterController {
     // camera and the figure all cross over smoothly instead of popping.
     this.swim = 0; this.diving = false; this.submerged01 = 0;
     this.stamina = 1; this.breath = 1; this.winded = false; this.sprinting = false;
+    /**
+     * What is underfoot, and how the board is behaving on it. `medium` is the live
+     * MEDIA row; `onWave` is 1 while the board is riding the swell rather than the
+     * bed; `lock` is how well trimmed it is on a face — the thing that decides
+     * whether the wave carries the rider or passes under them; `plane` is the
+     * displacement-to-planing blend, which is what stops a standing start from
+     * behaving like a board already up to speed.
+     */
+    this.medium = MEDIA.snow;
+    this.onWave = 0; this.lock = 0; this.plane = 0;
+    this.waveY = 0; this.waveSteep = 0; this.waveC = 0;
     this._fwd = new THREE.Vector3(); this._right = new THREE.Vector3();
     this._n = new THREE.Vector3();
+    this._wave = { y: 0, gx: 0, gz: 0, steep: 0, c: 0, depth: 0, bed: 0 };
   }
 
   update(dt, rig) {
@@ -5239,6 +5460,10 @@ class CharacterController {
 
     rig.getFlatForward(this._fwd);
     rig.getFlatRight(this._right);
+
+    // The medium has to be resolved *before* the integrator runs, off last frame's
+    // depth, because the integrator is what chooses which surface to read.
+    this.medium = Medium.resolve(this.waterDepth);
 
     if (this.surf > 0.5) this._surfStep(h, rig);
     else this._walkStep(h);
@@ -5281,6 +5506,21 @@ class CharacterController {
    * clamped by the bed, so diving in eighty centimetres of water does nothing.
    */
   _vertical(h, surfY) {
+    // Riding takes precedence over floating and over swimming: a board on a wave is
+    // standing on the surface, not in it. Without this branch the swim blend would
+    // win the moment the water passed chest depth and the rider would sink through
+    // the face they are riding.
+    if (this.surf > 0.5 && this.onWave > 0.5) {
+      this.swim = expDamp(this.swim, 0, 6, h);
+      this.diving = false;
+      // A planing board sits a little proud of the surface; a wallowing one sits in
+      // it. Snapped harder than the walk's damp because the surface it is tracking
+      // is already moving under it and a soft follow reads as lag.
+      const ride = surfY + mix(-0.14, 0.06, this.plane);
+      this.position.y = expDamp(this.position.y, Math.max(ride, this.groundY), 14, h);
+      this.submerged01 = 0;
+      return;
+    }
     const wantSwim = Ocean.on && this.waterDepth > SWIM_DEPTH;
     this.swim = expDamp(this.swim, wantSwim ? 1 : 0, wantSwim ? 3.2 : 4.6, h);
     // Breath gates the dive rather than ending it abruptly: run out and buoyancy
@@ -5369,47 +5609,115 @@ class CharacterController {
   }
 
   _surfStep(h, rig) {
+    const m = this.medium;
     // Negated: increasing `facing` rotates the heading toward +X, which is to the
     // camera's left, so a positive moveX — D or ArrowRight — has to *decrease*
     // it. The yaw-tracking term keeps its sign because it is a controller toward
     // an angle, not a direction.
     const steer = clamp(-input.moveX * 0.85 + angleDelta(this.facing, rig.yaw) * 1.25, -1, 1);
-    this.facing += steer * SURF_TURN * h;
+    this.facing += steer * m.turn * h;
 
     // Camera shake, and only from the one thing that earns it: an edge loaded up
     // at speed. Added as a rate rather than an impulse, so it reaches an
     // equilibrium against the rig's own decay — a hard carve at top speed
     // settles around 0.4 trauma, a couple of centimetres of rig movement.
-    const load = Math.abs(steer) * (this.speed / SURF_MAX);
+    const load = Math.abs(steer) * (this.speed / m.max);
     if (load > 0.25) rig.addTrauma((load - 0.25) * 1.35 * h);
 
     const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
-    this.terrain.normalAt(this.position.x, this.position.z, this._n);
-    const slopeAssist = -(this._n.x * fx + this._n.z * fz) * 26;
-    let thrust = SURF_THRUST + slopeAssist;
+    const water = m.id === 4;
+    this.onWave = expDamp(this.onWave, water ? 1 : 0, 4.2, h);
+
+    let thrust = m.thrust;
+    if (water) thrust += this._waveDrive(h, m, fx, fz);
+    else {
+      // Gravity down the face. The sign was inverted: `n.x` is minus the height
+      // gradient, so negating the dot product made surfing *uphill* the gain and
+      // dropping down a dune face a loss — the exact opposite of what this mode
+      // exists for. Facing downhill now reads positive.
+      this.terrain.normalAt(this.position.x, this.position.z, this._n);
+      thrust += (this._n.x * fx + this._n.z * fz) * m.slopeGain;
+      this.lock = expDamp(this.lock, 0, 3, h);
+      this.plane = expDamp(this.plane, 1, 3, h);
+    }
     if (input.moveZ < 0) thrust -= 14;
     this.velocity.x += fx * thrust * h;
     this.velocity.z += fz * thrust * h;
 
     // Lateral grip: kill sideways velocity, but not entirely — the residual is
-    // what reads as a drift when you overcook the turn.
+    // what reads as a drift when you overcook the turn. On water the fin only
+    // bites once the board is planing, which is what makes a standing start
+    // wallow instead of carving.
     const rx = Math.cos(this.facing), rz = -Math.sin(this.facing);
     const lat = this.velocity.x * rx + this.velocity.z * rz;
-    const grip = Math.min(1, SURF_GRIP * h);
+    const grip = Math.min(1, m.grip * (water ? 0.35 + 0.65 * this.plane : 1) * h);
     this.velocity.x -= rx * lat * grip;
     this.velocity.z -= rz * lat * grip;
 
     let s = Math.hypot(this.velocity.x, this.velocity.z);
     if (s > 0.0001) {
-      const drag = SURF_DRAG * s * s * 0.02 + 0.9;
+      // Below planing speed a hull is pushing water rather than skimming over it,
+      // so the drag is far higher — the hump every displacement hull has to climb
+      // through before it will accelerate freely.
+      const hump = water ? 1 + 2.4 * (1 - this.plane) : 1;
+      const drag = (m.drag * s * s * 0.02 + 0.9) * hump;
       const k = Math.max(0, s - drag * h) / s;
       this.velocity.x *= k; this.velocity.z *= k;
     }
     s = Math.hypot(this.velocity.x, this.velocity.z);
-    if (s > SURF_MAX) {
-      const k = SURF_MAX / s;
+    if (s > m.max) {
+      const k = m.max / s;
       this.velocity.x *= k; this.velocity.z *= k;
     }
+    if (water) this.plane = expDamp(this.plane, clamp01(s / m.planeSpeed), 2.6, h);
+  }
+
+  /**
+   * Wave riding. Returns the thrust the water is contributing this frame.
+   *
+   * Three terms, and they are three different things:
+   *
+   *   gravity   the board falls down the face it is on, exactly as it falls down a
+   *             dune — but the face is the swell's gradient, not the bed's.
+   *   catch     while the board is trimmed on a steep face *and* making something
+   *             near the wave's own celerity, the wave carries it. This is the
+   *             term that makes a ride hold rather than decay, and it is gated on
+   *             both conditions because either one alone is not a ride: a steep
+   *             face at zero speed is a wave passing under you, and celerity on
+   *             flat water is just a fast board.
+   *   drop      the lock bleeds when those conditions stop being met, so falling
+   *             off the back of a wave happens on its own rather than being
+   *             scripted.
+   *
+   * The swell direction is the gradient's own downhill, not a stored bearing: that
+   * way refraction in the shallows steers the ride for free, because the shoaling
+   * spectrum has already bent the gradient toward the shore-normal.
+   */
+  _waveDrive(h, m, fx, fz) {
+    const w = Ocean.waveAt(this.position.x, this.position.z, this._wave);
+    this.waveY = w.y; this.waveSteep = w.steep; this.waveC = w.c;
+
+    // Downhill on the water surface. The gradient points uphill, so the face falls
+    // along -grad, and a board pointed down it gets the whole of gravity.
+    const gl = Math.hypot(w.gx, w.gz);
+    const down = gl > 1e-5 ? -(w.gx * fx + w.gz * fz) / gl : 0;
+    const steepness = Math.min(gl, 1.4);
+    let drive = down * steepness * m.slopeGain;
+
+    // Am I keeping up with it? The wave travels down its own face at celerity c.
+    const along = this.speed;
+    const match = w.c > 0.2 ? clamp01(along / (w.c * 0.72)) : 0;
+    // Trim: on the face (down > 0) and steep enough to hold a rider.
+    const trim = clamp01(down) * clamp01((w.steep - 0.06) / 0.30);
+    const want = trim * match;
+    this.lock = expDamp(this.lock, want, want > this.lock ? 2.8 : m.dropRate, h);
+    drive += this.lock * m.catchGain;
+
+    // Pumping. Working the board fore-and-aft is how a rider generates speed on a
+    // face, so holding forward while locked in is worth something — but only while
+    // locked in, or it becomes a motor.
+    if (input.moveZ > 0.2) drive += this.lock * 4.2;
+    return drive;
   }
 
   /**
@@ -9759,8 +10067,10 @@ void main(){
 }
 `;
 
+// G.ocean joins the list because the wake is now sometimes made of water and needs
+// the sea's own colours to shade it — the same reason SPRAY_FRAG already includes it.
 const WAKE_FRAG = G.head + G.noise + G.shading + G.atmosphere + G.shadowLookup
-  + G.spellLights + G.wake + `
+  + G.spellLights + G.ocean + G.wake + `
 in vec3 vWorld;
 in vec3 vNormal;
 in float vQ;
@@ -9794,12 +10104,15 @@ void main(){
   vec3 L=uSunDir;
   const float INV_PI=0.31830988618;
 
-  // Thrown snow is loose, broken and bright — brighter and very slightly bluer
-  // than the packed field, because freshly broken snow has more surface per unit
-  // volume and scatters more, and snow's blue is where its scattering shows.
-  vec3 albedo=vec3(0.895,0.920,0.968);
-  float rough=0.74;
-  vec3 f0=vec3(0.028);
+  // Thrown material is loose, broken and brighter than the packed field it came
+  // out of, because breaking it up multiplies its surface per unit volume. What it
+  // *is* comes from the biome: bioLoose() is the loose/thrown colour the terrain
+  // already uses, and it had no callers at all while this shader carried a
+  // hardcoded snow white — so a dune threw white powder and so did a lava shelf.
+  bool wet=uWakeMed.x>3.5;
+  vec3 albedo=mix(bioLoose()*1.06,uSeaFoam,wet?0.86:0.0);
+  float rough=mix(uBioRough.x,0.09,wet?1.0:0.0);
+  vec3 f0=vec3(mix(uBioRough.z,0.020,wet?1.0:0.0));
   // Thin at the lip, thick at the base — which is the *opposite* of intuition
   // and the whole reason the crest glows when the sun is behind it.
   float thick=mix(0.85,0.05,smoothstep(0.15,0.95,vQ));
@@ -9809,9 +10122,11 @@ void main(){
   float noiseRot=ign(gl_FragCoord.xy)*6.28318530718;
   float shadow=sunShadow(vWorld,N,vViewDist,noiseRot);
 
-  vec3 col=albedo*INV_PI*uSunRadiance*wrapDiffuse(ndl,0.68)*shadow;
-  col+=snowSubsurface(N,L,V,uSunRadiance,thick,uSSS*1.5,uSSSRadius)*albedo
-       *mix(0.5,1.0,shadow);
+  // The wrap and the scatter both come from the biome now. Sand barely wraps and
+  // barely scatters; snow does both hard; aerated water scatters like neither.
+  vec3 col=albedo*INV_PI*uSunRadiance*wrapDiffuse(ndl,mix(uBioMat.y,0.34,wet?1.0:0.0))*shadow;
+  col+=snowSubsurface(N,L,V,uSunRadiance,thick,uSSS*1.5*mix(uBioMat.x,0.55,wet?1.0:0.0),uSSSRadius)
+       *albedo*mix(0.5,1.0,shadow);
   if(ndl>0.0){
     vec3 H=normalize(V+L);
     col+=uSunRadiance*distributionGGX(clamp(dot(N,H),0.0,1.0),rough)
@@ -9824,8 +10139,11 @@ void main(){
       *fresnelSchlickRough(NdotV,f0,rough)*uAmbient;
   if(uSpellCount>0.5) col+=spellLighting(vWorld,N,V,albedo,thick,uSSS,uSSSRadius);
 
-  if(uGlint>0.001){
-    float g=snowGlints(vWorld.xz,N,V,L,0.004,uGlint,uGlintGraze);
+  // Gated on the biome's own sparkle channel, the way the terrain gates it. Sand
+  // and basalt have no crystal facets to catch a low sun and were glittering like
+  // snow because this branch never asked which surface it was drawing.
+  if(uGlint>0.001&&uBioMat.z>0.001){
+    float g=snowGlints(vWorld.xz,N,V,L,0.004,uGlint*uBioMat.z,uGlintGraze);
     col+=uSunRadiance*g*shadow*0.7;
   }
 
@@ -9835,8 +10153,23 @@ void main(){
   // inside of the curl, where a real breaking wave genuinely is in shadow.
   float barrel=1.0-0.34*smoothstep(0.45,0.95,vQ)*smoothstep(0.25,0.8,vAge);
   col*=barrel;
-  // Blue in proportion to the darkening, for the same reason a snow cave is blue.
-  col*=mix(vec3(1.0),vec3(0.62,0.76,1.0),(1.0-barrel)*0.9);
+  // Tinted in proportion to the darkening, for the same reason a snow cave is
+  // blue: the deep-scatter path of whatever the material is. bioSSSB() is that
+  // path, so a lava curl darkens toward its own deep colour rather than toward
+  // the ice-cave blue this used to hardcode.
+  col*=mix(vec3(1.0),mix(bioSSSB(),uSeaDeep*3.0+0.34,wet?0.75:0.0),(1.0-barrel)*0.9);
+
+  // Aerated water is not a powder wall: it takes a sky reflection, and it goes
+  // genuinely thin toward the lip where the sheet tears into spray. The thinning
+  // is a dithered discard rather than alpha blending, for the same reason the sea
+  // sheet is opaque — blending here would cost the depth prepass, TAA and DOF, and
+  // ign() is the one dither pattern TAA resolves cleanly.
+  if(wet){
+    col=mix(col,textureLod(uSkyLUT,dirToLatLong(reflect(-V,N)),2.0).rgb,
+            fresnelSchlickRough(NdotV,f0,rough).r*0.55);
+    float cover=clamp(0.30+0.70*smoothstep(0.95,0.20,vQ),0.0,1.0);
+    if(cover<ign(gl_FragCoord.xy)) discard;
+  }
 
   col=applyAerial(col,uCamPos,vWorld,-V,L,uSkyLUT,uSunRadiance,
                   uFogDensity,uFogHeight,uFogStart,uAerial);
@@ -10022,7 +10355,10 @@ class SurfWake {
 
     // Below a walking pace there is nothing being displaced, and laying samples
     // anyway leaves a knot of overlapping wall where the player coasted to a stop.
-    const active = ch.surf > 0.06 && ch.speed > 1.6;
+    // The onset comes from the medium: water starts throwing almost immediately,
+    // basalt needs real speed before there is anything to tear loose.
+    const med = ch.medium || MEDIA.snow;
+    const active = ch.surf > med.surfGate && ch.speed > med.onsetSpeed * 0.72;
     if (active) {
       if (!this._active) this._maybeRestart();
       this._writeHead();
@@ -10038,6 +10374,18 @@ class SurfWake {
       this.dataTex.needsUpdate = true;
     }
     if (this.spray) this._plume(dt);
+  }
+
+  /**
+   * The surface the wake stands on: the bed, or the water over it where there is
+   * water. One indirection so the spine and the plume cannot disagree about which
+   * of the two they are building on.
+   */
+  mediumYAt(x, z) {
+    const bed = this.terrain.heightAt(x, z);
+    if (!Ocean.on) return bed;
+    const sy = Ocean.surfaceYAt(x, z);
+    return sy > bed ? sy : bed;
   }
 
   /**
@@ -10058,16 +10406,23 @@ class SurfWake {
     const bx = ch.position.x + fx * BOW_LEAD;
     const bz = ch.position.z + fz * BOW_LEAD;
     this._x[i] = bx;
-    this._y[i] = this.terrain.heightAt(bx, bz);
+    // The wall stands on whatever the board is riding. Reading the bake alone put
+    // a breaking wave on the seabed under eight metres of water, because the macro
+    // heightfield is the only surface this ever knew about.
+    this._y[i] = this.mediumYAt(bx, bz);
     this._z[i] = bz;
     this._rx[i] = Math.cos(ch.facing);
     this._rz[i] = -Math.sin(ch.facing);
     this._travel[i] = this._odo;
     this._laid[i] = this._clock;
-    // Speed sets how much snow there is to throw; the surf blend eases the whole
-    // thing in and out so entering and leaving are never a switch.
-    this._strength[i] = ch.surf * clamp01((ch.speed - 2.2) / 9.0);
-    this._carve[i] = ch.carve;
+    // Speed sets how much material there is to throw; the surf blend eases the
+    // whole thing in and out so entering and leaving are never a switch. The onset
+    // and the span come from the medium, because the speed at which a surface
+    // starts giving way is a property of the surface.
+    const med = ch.medium || MEDIA.snow;
+    this._strength[i] = ch.surf
+      * clamp01((ch.speed - med.onsetSpeed) / med.satSpan) * med.throwGain;
+    this._carve[i] = ch.carve * med.curlGain;
     if (this._count === 0) { this._count = 1; return; }
 
     // Commit once the bow has travelled a full step from the last fixed sample.
@@ -10151,15 +10506,20 @@ class SurfWake {
     const ch = this.controller;
     const sp = this.spray;
     const n = this._count;
-    if (n < 3 || ch.surf < 0.15 || ch.speed < 3.0) { this._plumeOwed = 0; return; }
+    const med = ch.medium || MEDIA.snow;
+    if (n < 3 || ch.surf < 0.15 || ch.speed < med.plumeSpeedGate) {
+      this._plumeOwed = 0; return;
+    }
     const travelled = ch.speed * dt;
     this._plumeOwed += travelled;
 
     // Two populations, because spray off a carve is two things and trying to get
     // both out of one emitter gets neither: a dense slow curtain hugging the
     // crest, and ballistic grains flung clear which give the plume its reach and
-    // its silhouette against the sky.
-    const perMetre = 88 * S.wakeSpray;
+    // its silhouette against the sky. Dry sand throws the most of both; ice throws
+    // the least; the second population is granular only, because water does not
+    // come off a lip in clods.
+    const perMetre = med.sprayPerMetre * S.wakeSpray;
     let count = (this._plumeOwed * perMetre) | 0;
     if (count <= 0) return;
     this._plumeOwed -= count / perMetre;
@@ -10187,6 +10547,8 @@ class SurfWake {
       const rx = this._rx[i] + (this._rx[i2] - this._rx[i]) * t;
       const rz = this._rz[i] + (this._rz[i2] - this._rz[i]) * t;
       const sx = this._x[i] + (this._x[i2] - this._x[i]) * t;
+      // Interpolated from the committed spine, which now records the ride surface
+      // rather than the bake — so a plume off a water carve leaves the swell.
       const sy = this._y[i] + (this._y[i2] - this._y[i]) * t;
       const sz = this._z[i] + (this._z[i2] - this._z[i]) * t;
       const dist = this._dist[j] + (this._dist[j2] - this._dist[j]) * t;
@@ -10210,18 +10572,22 @@ class SurfWake {
           rx * side * (0.4 + Math.random() * 1.1) + ch.velocity.x * 0.16,
           0.9 + Math.random() * 1.8,
           rz * side * (0.4 + Math.random() * 1.1) + ch.velocity.z * 0.16,
-          0.055 + Math.random() * 0.085, 0.34 + Math.random() * 0.40, 0, 4.5);
+          0.055 + Math.random() * 0.085, 0.34 + Math.random() * 0.40,
+          med.sprayKind, 4.5);
         continue;
       }
       const out = 1.2 + Math.random() * 2.6;
       const back = 0.4 + Math.random() * 2.2;
-      const clod = Math.random() < 0.18 ? 1 : 0;
+      // A clod is a lump of packed material that held together. Water does not
+      // produce them, so the sub-population is gated on the medium rather than on
+      // a bare probability that used to fire on every surface in the game.
+      const clod = med.clods && Math.random() < 0.18 ? 1 : 0;
       sp.emit(px, py, pz,
         rx * side * out + ch.velocity.x * 0.34 - Math.sin(ch.facing) * back * 0.3,
         1.8 + Math.random() * 3.4,
         rz * side * out + ch.velocity.z * 0.34 - Math.cos(ch.facing) * back * 0.3,
         clod ? 0.016 + Math.random() * 0.014 : 0.026 + Math.random() * 0.034,
-        0.55 + Math.random() * 0.75, clod, clod ? 0.5 : 1.1);
+        0.55 + Math.random() * 0.75, clod ? 1 : med.sprayKind, clod ? 0.5 : 1.1);
     }
   }
 }
@@ -11387,22 +11753,34 @@ class WaterWorldRig {
     this.root.visible = beauty && this.active;
     this.iceRoot.visible = beauty && !!S.showWorldDressing && Biome.key === "floe" && Ocean.on;
   }
-  _waterY(x, z) {
-    const a = S.windDirection * Math.PI / 180;
-    const t = UB.uClock.value;
-    const swell = (Ocean.live ? Ocean.live.swell : 1) * S.seaSwell;
-    const long = Math.sin((x * Math.sin(a) + z * Math.cos(a)) * 0.078 - t * 1.12) * 0.30 * swell;
-    const cross = Math.sin((x * Math.cos(a) - z * Math.sin(a)) * 0.163 + t * 1.78) * 0.09 * swell;
-    return Ocean.surfaceYAt(x, z) + long + cross;
+  /**
+   * The water the hull sits on. This used to add two hand-rolled sines on top of
+   * the still level, which meant the cutter pitched and rolled to a swell that
+   * appeared nowhere on screen. It now reads the same spectrum the shader draws.
+   */
+  _waterY(x, z) { return Ocean.surfaceYAt(x, z); }
+  /**
+   * The cutter is the traversal contract for the sailing realms — including the
+   * floe route, whose whole character is a hull working through pack ice rather
+   * than a walker on top of it. It stands aside while the board is out, so surf
+   * and the helm are not fighting over the same keys.
+   */
+  _shouldSail() {
+    return !!S.showVessel && SAIL_REALM_BIOMES.has(Biome.key) && Ocean.on
+      && !input.surf;
   }
-  _shouldSail() { return !!S.showVessel && WATER_REALM_BIOMES.has(Biome.key) && Ocean.on; }
   _embark(controller) {
     this.active = true; this.speed = 0; this.yaw = controller.facing;
     this.position.set(controller.position.x, 0, controller.position.z);
   }
   _disembark(controller) {
     this.active = false; this.root.visible = false;
-    controller.position.y = this.terrain.heightAt(controller.position.x, controller.position.z);
+    // Step off onto whatever is actually there. Dropping straight to the bed put
+    // the rider on the seabed in eight metres of water the frame the board came out.
+    const bed = this.terrain.heightAt(controller.position.x, controller.position.z);
+    const sy = Ocean.on
+      ? Ocean.surfaceYAt(controller.position.x, controller.position.z) : bed;
+    controller.position.y = Math.max(bed, sy);
   }
   _pinPlayer(controller) {
     this.root.updateMatrixWorld(true);
@@ -11459,10 +11837,11 @@ class WaterWorldRig {
     const sail = this._shouldSail();
     if (sail && !this.active) this._embark(controller);
     if (!sail && this.active) this._disembark(controller);
-    if (!this.active) {
-      if (Biome.key === "floe" && Ocean.on && S.showWorldDressing) this._seedIce(controller);
-      return;
-    }
+    // The pack ice is the floe route's whole character, so it is seeded whether the
+    // team is on the deck or on the board. It used to be seeded only when the hull
+    // was stood down, which is the one case the reference plate never shows.
+    if (Biome.key === "floe" && Ocean.on && S.showWorldDressing) this._seedIce(controller);
+    if (!this.active) return;
     rig.getFlatForward(this._fwd); rig.getFlatRight(this._right);
     let wx = this._fwd.x * input.moveZ + this._right.x * input.moveX;
     let wz = this._fwd.z * input.moveZ + this._right.z * input.moveX;
@@ -15031,6 +15410,384 @@ function planRealm(index, terrain) {
 }
 
 /* =========================================================================
+ * THE WORKS — the resident workforce, its fabrication phases, and the council
+ * that signs a realm over.
+ *
+ * SYSTEM_MANIFEST has asserted three things since it was written that nothing in
+ * this file ever read: nine agent cells per inhabited body, a three-seat Minato
+ * Council per inhabited body, and an `inhabited` flag separating the three
+ * populated worlds from the six monitored ones. A monitor that reports numbers it
+ * does not simulate is a dashboard with a story attached, so this is the
+ * simulation those three assertions describe.
+ *
+ * The division of labour matters and it is the whole design:
+ *
+ *   the avatars   Loki and Jaganaught do the *forming*. They walk the site, grade
+ *                 the apron, found the footing and raise the mass — physical work,
+ *                 in the deformation field and the structure field, at walking
+ *                 pace, which is what you watch.
+ *   the cells     do the *fabrication*. Every mass the avatars raise is handed over
+ *                 as eleven phases of work, and the resident cells draw those
+ *                 phases down by discipline, in parallel, at their own rates. This
+ *                 is the work that has always been claimed and never shown.
+ *   the council   decides whether a realm is finished. Three seats, each able to
+ *                 raise a hold, and a realm cannot commission over an open hold.
+ *
+ * On the six monitored worlds there are no resident cells, so the avatars carry the
+ * fabrication themselves and the monitor says so. That is what makes `inhabited`
+ * load-bearing rather than decorative.
+ * ========================================================================= */
+
+/**
+ * The eleven-phase fabrication timeline, carried over from the F3 rapid-facility
+ * model. `share` is the fraction of a mass's total fabrication the phase accounts
+ * for — they sum to one, so a mass's percent-complete is a real weighted figure
+ * rather than a step count. `forms` names the phases that do something to the
+ * ground, which is how a CAD fabrication sequence becomes terrain work.
+ */
+const FAB_PHASES = [
+  { id: "site", name: "SITE PREPARATION", disc: "civil", share: 0.06, forms: "grade" },
+  { id: "found", name: "FOUNDATIONS & CIVILS", disc: "civil", share: 0.14, forms: "found" },
+  { id: "struct", name: "STRUCTURAL STEEL", disc: "struct", share: 0.12, forms: null },
+  { id: "mech", name: "MECHANICAL ERECTION", disc: "mech", share: 0.19, forms: null },
+  { id: "rotate", name: "ROTATING EQUIPMENT", disc: "mech", share: 0.07, forms: null },
+  { id: "pipe", name: "ABOVE-GROUND PIPING", disc: "piping", share: 0.14, forms: null },
+  { id: "eni", name: "ELECTRICAL & INSTRUMENTATION", disc: "eni", share: 0.10, forms: null },
+  { id: "clad", name: "INSULATION & CLADDING", disc: "struct", share: 0.06, forms: null },
+  { id: "precom", name: "PRE-COMMISSIONING", disc: "qa", share: 0.05, forms: null },
+  { id: "commis", name: "COMMISSIONING & START-UP", disc: "qa", share: 0.04, forms: null },
+  { id: "handover", name: "PERFORMANCE TEST & HANDOVER", disc: "qa", share: 0.03, forms: null },
+];
+
+/**
+ * Nine cells, six disciplines, two of the three heaviest doubled — which is what
+ * `agentCellsPerInhabitedBody: 9` has meant all along. `rate` is phase-share per
+ * second at buildRate 1, so a cell's throughput is a stated number rather than an
+ * emergent one, and `holdRisk` is the per-assignment chance that the cell runs into
+ * something it cannot close on its own.
+ */
+const CELL_ROSTER = [
+  { tag: "CIV-1", disc: "civil", name: "GRADE & EARTHWORKS", rate: 0.085, holdRisk: 0.10 },
+  { tag: "CIV-2", disc: "civil", name: "PILING & FOUNDATIONS", rate: 0.070, holdRisk: 0.14 },
+  { tag: "STR-1", disc: "struct", name: "PRIMARY STEEL", rate: 0.072, holdRisk: 0.11 },
+  { tag: "STR-2", disc: "struct", name: "CLADDING & INSULATION", rate: 0.090, holdRisk: 0.07 },
+  { tag: "MEC-1", disc: "mech", name: "HEAVY LIFT & SETTING", rate: 0.055, holdRisk: 0.18 },
+  { tag: "MEC-2", disc: "mech", name: "ROTATING & ALIGNMENT", rate: 0.078, holdRisk: 0.12 },
+  { tag: "PIP-1", disc: "piping", name: "SPOOL PREFAB & FIELD WELD", rate: 0.060, holdRisk: 0.15 },
+  { tag: "ENI-1", disc: "eni", name: "CABLE, SWITCHGEAR & LOOPS", rate: 0.068, holdRisk: 0.13 },
+  { tag: "QAC-1", disc: "qa", name: "PRECOM, COMMISSIONING & QA", rate: 0.062, holdRisk: 0.09 },
+];
+
+/** What a cell can be doing. Ordered by how much attention it deserves. */
+const CELL_IDLE = 0, CELL_WORKING = 1, CELL_HOLD = 2, CELL_STARVED = 3;
+
+/** The three council seats. Each reviews one axis and can hold a realm on it. */
+const COUNCIL_SEATS = [
+  { tag: "I", name: "STRUCTURAL ASSURANCE", axis: "every mass topped and clad" },
+  { tag: "II", name: "SYSTEMS & COMMISSIONING", axis: "every system proven live" },
+  { tag: "III", name: "CHARTER COMPLIANCE", axis: "the charter delivered as written" },
+];
+
+const Works = {
+  ctx: null,
+  realm: null,
+  inhabited: false,
+  cells: [],
+  council: [],
+  /** Outstanding (mass, phase) fabrication work, oldest first. */
+  queue: [],
+  /** Per-mass fabrication records, keyed by the mass object the pilot handed over. */
+  records: [],
+  tally: { phasesDone: 0, holdsRaised: 0, holdsCleared: 0, handedOver: 0 },
+  events: [],
+  _holdSeed: 0,
+
+  init(ctx) {
+    this.ctx = ctx;
+    this.cells = CELL_ROSTER.map((r, i) => ({
+      ...r, index: i, state: CELL_IDLE, item: null, progress: 0,
+      done: 0, holdT: 0, holdWhy: "", idleT: 0,
+    }));
+    this.council = COUNCIL_SEATS.map((s) => ({ ...s, hold: false, why: "", cleared: false }));
+  },
+
+  emit(kind, title, sub) { this.events.push({ kind, title, sub }); },
+
+  /**
+   * A realm opens. Whether it has a resident workforce at all is the manifest's
+   * `inhabited` flag, read here for the first time.
+   */
+  openRealm(plan) {
+    this.realm = plan.realm;
+    this.inhabited = !!plan.realm.inhabited;
+    this.queue.length = 0;
+    this.records.length = 0;
+    for (const c of this.cells) {
+      c.state = CELL_IDLE; c.item = null; c.progress = 0; c.done = 0;
+      c.holdT = 0; c.holdWhy = ""; c.idleT = 0;
+    }
+    for (const s of this.council) { s.hold = false; s.why = ""; s.cleared = false; }
+    this._holdSeed = (plan.index + 1) * 7919;
+    this.emit("works-open",
+      this.inhabited ? "NINE CELLS ON STATION" : "NO RESIDENT CELLS",
+      this.inhabited
+        ? plan.realm.seat + " · " + SYSTEM_MANIFEST.agentCellsPerInhabitedBody
+          + " AGENT CELLS · " + this.council.length + " COUNCIL SEATS"
+        : plan.realm.seat + " · MONITORED WORLD · AVATAR-CREWED FABRICATION");
+  },
+
+  /** Deterministic per-realm randomness, so a realm's holds are reproducible. */
+  _rand() {
+    this._holdSeed = (this._holdSeed * 1103515245 + 12345) & 0x7fffffff;
+    return this._holdSeed / 0x7fffffff;
+  },
+
+  /**
+   * The avatars have finished forming a mass. Hand its eleven phases to the works.
+   * Pads are excluded: a graded disc is groundwork, not a facility, and enqueueing
+   * eleven phases of commissioning for one is how a progress figure stops meaning
+   * anything.
+   */
+  commitMass(spec, mass) {
+    if (!spec || spec.isPad) return null;
+    // Bigger masses are more work. Scaled off the same footprint and height the
+    // pilot uses to decide how long to stand there sculpting, so the two agree.
+    const weight = 1 + spec.footprint * 0.12 + spec.height * 0.02;
+    const rec = {
+      label: spec.label, mass, weight, spec,
+      phase: 0, progress: 0, complete: 0, done: false,
+      x: spec.x, z: spec.z,
+    };
+    this.records.push(rec);
+    for (let i = 0; i < FAB_PHASES.length; i++) {
+      this.queue.push({ rec, phaseIndex: i, claimed: false, progress: 0 });
+    }
+    return rec;
+  },
+
+  /** How far through fabrication the whole realm is, by weighted phase share. */
+  get completion() {
+    let tot = 0, got = 0;
+    for (const r of this.records) { tot += r.weight; got += r.weight * r.complete; }
+    return tot > 0 ? got / tot : 0;
+  },
+
+  get openHolds() {
+    let n = 0;
+    for (const c of this.cells) if (c.state === CELL_HOLD) n++;
+    return n;
+  },
+
+  get workingCells() {
+    let n = 0;
+    for (const c of this.cells) if (c.state === CELL_WORKING) n++;
+    return n;
+  },
+
+  /**
+   * A phase may not start before the phase before it on the same mass has finished.
+   * That single rule is what makes the eleven phases a sequence rather than eleven
+   * independent bars, and it is why a stalled foundation visibly starves the four
+   * cells waiting behind it.
+   */
+  _available(item) {
+    if (item.claimed || item.progress >= 1) return false;
+    const prev = item.phaseIndex - 1;
+    if (prev < 0) return true;
+    return item.rec.phase > prev;
+  },
+
+  update(dt, buildRate) {
+    if (!this.realm) return;
+    const rate = buildRate === undefined ? 1 : buildRate;
+    // On a monitored world the avatars are the workforce, so fabrication advances
+    // with the pilot's own build rate and no cell ever appears on station.
+    if (!this.inhabited) {
+      for (const item of this.queue) {
+        if (!this._available(item)) continue;
+        this._advance(item, 0.055 * rate * dt, null);
+        break;
+      }
+      this._score();
+      return;
+    }
+
+    for (const c of this.cells) {
+      if (c.state === CELL_HOLD) {
+        c.holdT -= dt * rate;
+        if (c.holdT <= 0) {
+          c.state = CELL_IDLE; c.item = null; c.holdWhy = "";
+          this.tally.holdsCleared++;
+        }
+        continue;
+      }
+      if (!c.item) {
+        const item = this._claim(c);
+        if (!item) {
+          // Starved rather than idle: there is work on the books, it is just
+          // blocked behind a phase this cell does not own. Worth distinguishing,
+          // because a wall of STARVED is a bottleneck and a wall of IDLE is not.
+          c.idleT += dt;
+          c.state = this.queue.length > 0 ? CELL_STARVED : CELL_IDLE;
+          continue;
+        }
+        c.item = item; c.state = CELL_WORKING; c.progress = 0; c.idleT = 0;
+        // The chance of a hold is drawn once, at assignment, so a cell that got a
+        // clean run stays clean instead of rolling dice every frame.
+        c.willHold = this._rand() < c.holdRisk;
+        c.holdAt = 0.25 + this._rand() * 0.55;
+      }
+      const item = c.item;
+      if (c.willHold && item.progress >= c.holdAt) {
+        const ph = FAB_PHASES[item.phaseIndex];
+        c.state = CELL_HOLD;
+        c.holdT = 3.5 + this._rand() * 7.0;
+        c.holdWhy = HOLD_REASONS[(this._rand() * HOLD_REASONS.length) | 0];
+        c.willHold = false;
+        item.claimed = false;
+        this.tally.holdsRaised++;
+        this.emit("works-hold", c.tag + " HOLD",
+          item.rec.label + " · " + ph.name + " · " + c.holdWhy);
+        c.item = null;
+        continue;
+      }
+      this._advance(item, c.rate * rate * dt / item.rec.weight, c);
+      c.progress = item.progress;
+      if (item.progress >= 1) {
+        c.done++; c.item = null; c.state = CELL_IDLE;
+      }
+    }
+    this._score();
+  },
+
+  _claim(cell) {
+    for (const item of this.queue) {
+      if (FAB_PHASES[item.phaseIndex].disc !== cell.disc) continue;
+      if (!this._available(item)) continue;
+      item.claimed = true;
+      return item;
+    }
+    return null;
+  },
+
+  /**
+   * Push a phase forward, and let the two groundworks phases actually move ground.
+   * This is the F3 fabrication sequence landing in the deformation field: SITE
+   * PREPARATION grades a packed apron, FOUNDATIONS cuts the footing and throws the
+   * spoil into a rim — one brush each, because the brush already produces a
+   * depression with its own berm outside the rim.
+   */
+  _advance(item, delta, cell) {
+    const before = item.progress;
+    item.progress = clamp01(item.progress + delta);
+    const ph = FAB_PHASES[item.phaseIndex];
+    const rec = item.rec;
+
+    if (ph.forms && this.ctx && this.ctx.terrain && item.progress > before) {
+      const d = this.ctx.terrain.deform;
+      const spec = rec.spec;
+      const step = item.progress - before;
+      if (ph.forms === "grade") {
+        // A broad, shallow, heavily compacted disc with a soft edge: a graded pad,
+        // not a hole. The apron reaches past the mass so the mass is not standing
+        // on its own rim.
+        d.brush(spec.x, spec.z, spec.footprint * 1.75 + 3.5,
+          0.10 * step * 34, 0.02 * step * 34, 1.0, 0, spec.yaw,
+          Math.max(1, spec.aspect * 0.85), 0.42);
+      } else {
+        // The footing. Deeper, tighter, and the displaced mass goes to the rim.
+        d.brush(spec.x, spec.z, spec.footprint * 1.12 + 1.2,
+          0.42 * step * 22, 0.55 * step * 22, 0.85, 0, spec.yaw,
+          Math.max(1, spec.aspect * 0.9), 1.0);
+      }
+    }
+
+    if (item.progress >= 1) {
+      this.tally.phasesDone++;
+      if (rec.phase <= item.phaseIndex) rec.phase = item.phaseIndex + 1;
+      const at = this.queue.indexOf(item);
+      if (at >= 0) this.queue.splice(at, 1);
+      if (rec.phase >= FAB_PHASES.length && !rec.done) {
+        rec.done = true;
+        this.tally.handedOver++;
+        this.emit("works-done", rec.label + " PROVEN",
+          "ALL " + FAB_PHASES.length + " PHASES CLOSED"
+          + (cell ? " · LAST BY " + cell.tag : " · AVATAR-CREWED"));
+      }
+    }
+  },
+
+  /** Roll each record's phase progress up into one weighted completion figure. */
+  _score() {
+    for (const rec of this.records) {
+      let acc = 0;
+      for (let i = 0; i < FAB_PHASES.length; i++) {
+        if (i < rec.phase) { acc += FAB_PHASES[i].share; continue; }
+      }
+      // The phase currently in progress contributes its partial share, which is
+      // what stops the figure sitting still for the whole of a nineteen-percent
+      // mechanical erection.
+      const live = this.queue.find((q) => q.rec === rec && q.phaseIndex === rec.phase);
+      if (live) acc += FAB_PHASES[rec.phase].share * live.progress;
+      rec.complete = clamp01(acc);
+    }
+  },
+
+  /**
+   * The council review. Each seat checks its own axis against the works, and a
+   * seat that is not satisfied raises a hold instead of voting. Called by the pilot
+   * before handover, so a realm cannot commission over an open hold — which is what
+   * turns three names in a manifest into a gate.
+   */
+  reviewForHandover() {
+    if (!this.inhabited) {
+      for (const s of this.council) { s.cleared = true; s.hold = false; }
+      return true;
+    }
+    const comp = this.completion;
+    const holds = this.openHolds;
+    const checks = [
+      { ok: comp > 0.62, why: "MASSES NOT TOPPED OUT — " + Math.round(comp * 100) + "% CLAD" },
+      { ok: holds === 0, why: holds + " CELL HOLD" + (holds === 1 ? "" : "S") + " STILL OPEN" },
+      { ok: this.tally.handedOver > 0, why: "NO SYSTEM YET PROVEN END TO END" },
+    ];
+    let all = true;
+    for (let i = 0; i < this.council.length; i++) {
+      const s = this.council[i], ck = checks[i];
+      const was = s.hold;
+      s.cleared = ck.ok; s.hold = !ck.ok; s.why = ck.ok ? "" : ck.why;
+      if (s.hold) {
+        all = false;
+        if (!was) this.emit("council-hold", "SEAT " + s.tag + " HOLDS", s.name + " · " + ck.why);
+      } else if (was) {
+        this.emit("council-clear", "SEAT " + s.tag + " CLEARS", s.name);
+      }
+    }
+    return all;
+  },
+
+  get councilVotes() {
+    let n = 0;
+    for (const s of this.council) if (s.cleared) n++;
+    return n;
+  },
+};
+
+/** What a cell runs into. Engineering holds, because that is what these are. */
+const HOLD_REASONS = [
+  "AWAITING VENDOR DATA",
+  "WELD PROCEDURE NOT QUALIFIED",
+  "HEAVY LIFT WINDOW CLOSED",
+  "MATERIAL CERT MISSING",
+  "INTERFERENCE WITH ADJACENT MASS",
+  "GEOTECH BELOW ASSUMED BEARING",
+  "LOOP CHECK FAILED — REWORK",
+  "CRYOGENIC INSULATION OUT OF SPEC",
+  "SPOOL DIMENSIONALLY REJECTED",
+  "POWER NOT YET ENERGISED",
+];
+
+/* =========================================================================
  * THE PILOT — the autonomous walker.
  *
  * The pilot does not move the character. It fills in the same `input` struct a
@@ -15047,6 +15804,8 @@ function planRealm(index, terrain) {
  * could drift out of step with what is on screen.
  * ========================================================================= */
 const ST_BRIEF = 0, ST_TRAVEL = 1, ST_RAISE = 2, ST_PAVE = 3, ST_BEAT = 4, ST_SIGNOFF = 5;
+/** Charter written out, waiting on the council. Not the same thing as handover. */
+const ST_REVIEW = 6;
 
 class Pilot {
   constructor(ctx) {
@@ -15089,7 +15848,15 @@ class Pilot {
     this.log.length = 0;
     this.state = ST_BRIEF;
     this.stateT = 0;
-    this.emit("realm-open", this.plan.realm.seat, "REALM " + this.plan.realm.numeral + " OPENED");
+    this.holdT = 0;
+    Works.openRealm(this.plan);
+    // The manifest's traversal column is finally read here rather than being
+    // inferred from two biome sets: a realm that says "Loki cutter" gets a hull, a
+    // realm that says "snow-surf" gets the board on its transits, and a realm that
+    // says "boots" walks. It used to be decoration.
+    this.traversal = this.plan.realm.traversal || "boots";
+    this.emit("realm-open", this.plan.realm.seat,
+      "REALM " + this.plan.realm.numeral + " OPENED · " + this.traversal.toUpperCase());
     this.nextTask();
   }
 
@@ -15107,7 +15874,16 @@ class Pilot {
         + this.task.id + " OF " + this.plan.tasks.length + " COMPLETE");
     }
     this.taskIndex++;
-    if (this.taskIndex >= this.plan.tasks.length) { this.commissionRealm(); return; }
+    // The charter is written out. Whether the realm actually changes hands is the
+    // council's call, not the queue's — so this asks rather than announces, and if
+    // a seat holds the pilot stays on station until the works close it.
+    if (this.taskIndex >= this.plan.tasks.length) {
+      this.taskIndex = this.plan.tasks.length;
+      this.state = ST_REVIEW;
+      this.stateT = 0;
+      this.requestHandover();
+      return;
+    }
 
     const t = this.plan.tasks[this.taskIndex];
     this.task = t;
@@ -15122,8 +15898,19 @@ class Pilot {
 
     for (const spec of t.masses) {
       const m = c.structures.add(spec);
-      if (!m) continue;
+      if (!m) {
+        // The structure field is full. This used to be a bare `continue`, so a
+        // charter item silently delivered fewer masses than it listed and the
+        // ledger reported it complete regardless.
+        t.dropped = (t.dropped || 0) + 1;
+        this.emit("task-blocked", "MASS DEFERRED",
+          spec.label + " · STRUCTURE FIELD AT CAPACITY");
+        continue;
+      }
       spec.live = m;
+      // Hand the mass to the works: eleven phases of fabrication that the resident
+      // cells draw down in parallel while the avatars walk on to the next one.
+      Works.commitMass(spec, m);
       const big = spec.height > 40 || spec.footprint > 12;
       // Approach from downwind of the mass so the walk-up is never straight
       // through where it is about to stand.
@@ -15162,6 +15949,23 @@ class Pilot {
       + " · " + t.note);
   }
 
+  /**
+   * Ask the council. A realm cannot commission over an open hold, so the three
+   * seats are a gate rather than a caption — and while they hold, the pilot waits
+   * on the terrace and the works keep grinding the holds down.
+   */
+  requestHandover() {
+    if (Works.reviewForHandover()) { this.commissionRealm(); return true; }
+    this.holdT = (this.holdT || 0) + 1;
+    if (this.holdT === 1) {
+      const held = Works.council.filter((s) => s.hold);
+      this.emit("council-review", "HANDOVER HELD",
+        Works.councilVotes + " / " + Works.council.length + " SEATS CLEAR · "
+        + (held[0] ? held[0].why : "REVIEW OPEN"));
+    }
+    return false;
+  }
+
   commissionRealm() {
     if (!this.plan || this.state === ST_SIGNOFF) return;
     const c = this.ctx;
@@ -15188,13 +15992,30 @@ class Pilot {
     if (!this.enabled) return "STOOD DOWN";
     if (this.suspend > 0) return "MANUAL · " + this.suspend.toFixed(0) + "S";
     if (this.state === ST_SIGNOFF) return "HANDOVER";
+    if (this.state === ST_REVIEW) return "IN REVIEW";
+    if (this.state === ST_BRIEF && !this.action) return "BRIEFING";
     switch (this.action && this.action.k) {
-      case ST_TRAVEL: return "TRAVERSING";
-      case ST_RAISE: return "SCULPTING";
+      case ST_TRAVEL: return this.ctx.controller.surf > 0.5 ? "RIDING" : "TRAVERSING";
+      case ST_RAISE: return "FORMING";
       case ST_PAVE: return "PAVING";
       case ST_BEAT: return "SURVEYING";
       default: return "STANDING BY";
     }
+  }
+
+  /**
+   * The banner line. Separate from `status` because the two answer different
+   * questions — what the avatar's hands are doing, and what the realm is waiting on.
+   */
+  get phase() {
+    if (this.state === ST_REVIEW) {
+      return "COUNCIL REVIEW " + Works.councilVotes + "/" + Works.council.length;
+    }
+    if (this.state === ST_SIGNOFF) return "HANDOVER";
+    if (!Works.inhabited) return "AVATAR-CREWED";
+    const h = Works.openHolds;
+    if (h > 0) return h + " HOLD" + (h === 1 ? "" : "S");
+    return Works.workingCells + "/" + Works.cells.length + " CELLS WORKING";
   }
 
   /* ----------------------------------------------------------------- drive */
@@ -15221,6 +16042,21 @@ class Pilot {
         c.terraform(REALMS[next].biome);
         this.openRealm(next);
       }
+      return;
+    }
+
+    // Waiting on the council. The pilot stands the charter down and holds station
+    // on the terrace while the works grind the open holds out; the review is re-run
+    // on a beat rather than every frame so the ledger has something readable in it.
+    if (this.state === ST_REVIEW) {
+      this.stateT += dt;
+      this.brake();
+      this.faceTowards(this.plan.seat.x, this.plan.seat.z);
+      this.focus.set(this.plan.seat.x,
+        c.terrain.heightAt(this.plan.seat.x, this.plan.seat.z) + 28, this.plan.seat.z);
+      this.hasFocus = true;
+      this.shot = "WIDE";
+      if (this.stateT > 2.4) { this.stateT = 0; this.requestHandover(); }
       return;
     }
 
@@ -15279,11 +16115,18 @@ class Pilot {
     this.focus.set(a.x, c.terrain.heightAt(a.x, a.z) + 3.0, a.z);
     this.hasFocus = true;
 
-    // Sprint on the long hauls, surf the really long ones — the dune faces are
-    // what surfing is for, and the wake it throws is the best thing in the file.
+    // Sprint on the long hauls, surf the really long ones — the faces are what
+    // surfing is for, and the wake it throws is the best thing in the file.
     input.sprint = dist > 34 && c.controller.stamina > 0.34;
-    const wantSurf = S.autoSurf && dist > 95 && c.controller.stamina > 0.42
-      && c.controller.waterDepth < 0.3;
+    // Water used to be an outright refusal (`waterDepth < 0.3`), which meant the
+    // pilot waded the sailing realms at a third of walking pace and never once put
+    // the board on the swell it was crossing. Deep water is now the *reason* to
+    // ride: past float depth in a surf realm there is nothing to walk on, so the
+    // distance gate comes down to what a wave is worth catching for.
+    const afloat = c.controller.waterDepth > SURF_FLOAT_DEPTH
+      && SURF_REALM_BIOMES.has(Biome.key);
+    const wantSurf = S.autoSurf && c.controller.stamina > 0.42
+      && (afloat ? dist > 26 : (dist > 95 && c.controller.waterDepth < 0.3));
     input.surf = wantSurf;
     if (wantSurf) {
       // A trailing shot is the only one whose yaw *is* the heading, so it is the
@@ -15607,7 +16450,11 @@ const ledger = {
       queued: g("listQueued"), cQueued: g("cntQueued"),
       aLabel: g("actLabel"), aPct: g("actPct"), aBar: g("actBar"),
       aSteps: g("actSteps"), aSub: g("actSub"), aClock: g("actClock"),
+      cells: g("listCells"), cCells: g("cntCells"),
+      fabLabel: g("fabLabel"), fabPct: g("fabPct"), fabBar: g("fabBar"),
+      seats: g("listSeats"), cSeats: g("cntSeats"), secCouncil: g("secCouncil"),
       tMass: g("tMass"), tKm: g("tKm"), tRealm: g("tRealm"), tUp: g("tUp"),
+      tPhase: g("tPhase"), tHold: g("tHold"),
       badge: g("autob"), badgeState: g("autoState"),
       card: g("card"), cardKind: g("cardKind"), cardTitle: g("cardTitle"),
       cardSub: g("cardSub"),
@@ -15736,14 +16583,76 @@ const ledger = {
       }
     }
 
+    this.works();
+
     e.tMass.textContent = String(pilot.tally.masses);
     e.tKm.textContent = (pilot.tally.metres / 1000).toFixed(2) + " km";
+    e.tPhase.textContent = String(Works.tally.phasesDone);
+    e.tHold.textContent = Works.tally.holdsRaised + " / " + Works.tally.holdsCleared;
     e.tRealm.textContent = pilot.tally.realms + " / " + REALMS.length;
     e.tUp.textContent = hhmmss(pilot.tally.seconds);
   },
 
+  /**
+   * The workforce block. Rebuilt in full every quarter second rather than
+   * diffed — nine rows and three rows of innerHTML at 8 Hz is nothing next to a
+   * frame of this renderer, and the alternative is nine cached element handles
+   * that go stale the moment the roster changes.
+   */
+  works() {
+    const e = this.el;
+    if (!Works.inhabited) {
+      e.cCells.textContent = "NONE RESIDENT";
+      e.cells.innerHTML = '<div class="wrow"><k>—</k><span>monitored world · '
+        + 'avatars carry the fabrication</span><em></em></div>';
+      e.secCouncil.style.display = "none";
+    } else {
+      e.secCouncil.style.display = "";
+      e.cCells.textContent = Works.workingCells + " / " + Works.cells.length + " WORKING";
+      let h = "";
+      for (const c of Works.cells) {
+        let cls = "", what = c.name.toLowerCase(), pct = "";
+        if (c.state === CELL_WORKING && c.item) {
+          cls = "work";
+          what = FAB_PHASES[c.item.phaseIndex].name.toLowerCase()
+            + " · " + c.item.rec.label.toLowerCase();
+          pct = (c.progress * 100).toFixed(0) + "%";
+        } else if (c.state === CELL_HOLD) {
+          cls = "hold";
+          what = c.holdWhy.toLowerCase();
+          pct = c.holdT.toFixed(0) + "s";
+        } else if (c.state === CELL_STARVED) {
+          cls = "starve"; what = "waiting on the phase in front"; pct = "—";
+        } else { what = "on station · " + what; pct = "idle"; }
+        h += '<div class="wrow ' + cls + '"><k>' + c.tag + '</k><span>' + what
+          + '</span><em>' + pct + '</em></div>';
+      }
+      e.cells.innerHTML = h;
+
+      e.cSeats.textContent = Works.councilVotes + " / " + Works.council.length;
+      let s = "";
+      for (const seat of Works.council) {
+        const cls = seat.hold ? "held" : seat.cleared ? "clear" : "";
+        s += '<div class="srow ' + cls + '"><k>' + (seat.cleared ? "✓" : seat.hold ? "!" : "·")
+          + '</k><span>' + seat.name.toLowerCase()
+          + (seat.hold ? '<i>' + seat.why.toLowerCase() + '</i>' : '')
+          + '</span></div>';
+      }
+      e.seats.innerHTML = s;
+    }
+    const comp = Works.completion;
+    e.fabLabel.textContent = "FABRICATION · " + Works.tally.handedOver + " OF "
+      + Works.records.length + " PROVEN";
+    e.fabPct.textContent = (comp * 100).toFixed(0) + "%";
+    e.fabBar.style.width = (comp * 100).toFixed(1) + "%";
+  },
+
   /** Lower-third and hero cards, drained from the pilot's event list. */
   cards(dt, pilot) {
+    // The works has its own event stream, drained into the same card queue. Merged
+    // here rather than pushed into pilot.events so the two systems stay independent
+    // of each other's internals.
+    while (Works.events.length) pilot.events.push(Works.events.shift());
     while (pilot.events.length) {
       const ev = pilot.events.shift();
       if (ev.kind === "realm-done") {
@@ -15759,6 +16668,16 @@ const ledger = {
         this.cardQ.push({ kind: "TOPPED OUT", cls: "amber", title: ev.title, sub: ev.sub });
       } else if (ev.kind === "realm-open") {
         this.cardQ.push({ kind: "REALM OPENED", cls: "", title: ev.title, sub: ev.sub });
+      } else if (ev.kind === "works-open") {
+        this.cardQ.push({ kind: "WORKFORCE ON STATION", cls: "", title: ev.title, sub: ev.sub });
+      } else if (ev.kind === "works-hold" || ev.kind === "task-blocked") {
+        this.cardQ.push({ kind: "HOLD RAISED", cls: "amber", title: ev.title, sub: ev.sub });
+      } else if (ev.kind === "works-done") {
+        this.cardQ.push({ kind: "SYSTEM PROVEN", cls: "jade", title: ev.title, sub: ev.sub });
+      } else if (ev.kind === "council-hold" || ev.kind === "council-review") {
+        this.cardQ.push({ kind: "COUNCIL", cls: "amber", title: ev.title, sub: ev.sub });
+      } else if (ev.kind === "council-clear") {
+        this.cardQ.push({ kind: "COUNCIL", cls: "jade", title: ev.title, sub: ev.sub });
       }
       if (this.cardQ.length > 4) this.cardQ.splice(0, this.cardQ.length - 4);
     }
@@ -16170,6 +17089,10 @@ async function main() {
   // programs are non-degenerate by the time the warm-up runs below and compile
   // during boot instead of hitching the first real frame.
   ledger.init();
+  // The works needs the terrain before the first realm opens, because opening a
+  // realm hands it masses and the two groundworks phases write into the
+  // deformation field on their first tick.
+  Works.init({ terrain, structures, conduits });
   const pilot = new Pilot({
     terrain, controller, rig, suit, spells, beams, spray, structures, conduits,
     terraform: (key) => applyBiome(key),
@@ -16323,8 +17246,14 @@ async function main() {
     }
     if (actions.ledger) { ledger.toggle(); S.showLedger = ledger.on; overlay.syncBool("showLedger"); }
     if (actions.skipTask) pilot.nextTask();
-    if (actions.skipRealm) pilot.commissionRealm();
+    // Skipping a realm still goes through the council. An override that walked past
+    // three open holds and printed COMMISSIONED anyway was the loudest example of
+    // the monitor reporting something it had not simulated.
+    if (actions.skipRealm) pilot.requestHandover();
     pilot.update(dt);
+    // The cells fabricate after the pilot has founded whatever it founded this
+    // frame, so a mass handed over on this tick is already on the books.
+    Works.update(dt, S.buildRate);
     director.update(dt);
 
     // ---- discrete actions -------------------------------------------------
@@ -16380,10 +17309,14 @@ async function main() {
     const tFrame = performance.now();
 
     controller.update(dt, rig);
+    // After the controller, because the controller is what resolves which medium is
+    // underfoot and every consumer downstream — wake, spray, HUD — wants this
+    // frame's answer rather than last frame's.
+    Medium.push();
     terrain.heightfield.clampToPlayArea(controller.position);
     // Water realms mount the team on the cutter *after* intent has been read,
     // so the same keys steer the helm rather than moving a hidden walker under
-    // the deck. Floe remains an on-foot ice route.
+    // the deck. Holding surf steps off the deck onto the board.
     waterRig.update(dt, rig, controller, spray);
     // Pose and simulate before the contact pass: the footprints are stamped at
     // the boot's actual planted position, which only exists once the figure has
@@ -16469,7 +17402,9 @@ async function main() {
     spells, terrain, sky, shadows, post, overlay, graph, S, input, perf, UB,
     suit, suitRender, suitContact, waves, beams, Biome, BIOMES, chrome,
     Ocean, sea, waterRig, applyBiome, SUIT_LIVERY, BINDINGS, latch, pollGamepad,
+    Medium, MEDIA, BIOME_MEDIUM, SAIL_REALM_BIOMES, SURF_REALM_BIOMES,
     structures, conduits, pilot, director, ledger, REALMS, SYSTEM_MANIFEST,
+    Works, FAB_PHASES, CELL_ROSTER, COUNCIL_SEATS,
     ObjectSculptSpec, NexusIterationSpec, planRealm,
     start() {
       if (runtimeDisposed || runtimeActive) return;
