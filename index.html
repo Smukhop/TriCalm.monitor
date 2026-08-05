@@ -1413,7 +1413,11 @@ const MOON_SET = [
     ringTilt: 0, ringExtent: 0 },
   { kind: 1, az: 302, el: 47, size: 0.055, bright: 1.15, rate: 0.0074, wobble: 5.0,
     ringTilt: 0, ringExtent: 0 },
-  { kind: 2, az: 214, el: 31, size: 0.098, bright: 0.92, rate: 0.0017, wobble: 2.0,
+  // Kept well clear of the False Earth's default bearing (196 deg). At planetSize
+  // 0.52 that body subtends most of a quadrant, and a companion within twenty
+  // degrees of it is simply composited away — which is exactly what happened when
+  // this sat at 214.
+  { kind: 2, az: 18, el: 36, size: 0.098, bright: 0.92, rate: 0.0017, wobble: 2.0,
     ringTilt: 0.42, ringExtent: 2.45 },
 ];
 
