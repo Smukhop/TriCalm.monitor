@@ -580,8 +580,8 @@ export const PATHOLOGIES = [
     // useless, because one hand-off with nothing to close against IS a loop.
     // Diagnosing before there is anything to diagnose is how an instrument loses
     // its credibility on the first frame a user sees it.
-    test: (s) => s.energy !== undefined && s.energy < 0.55,
-    why: 'Not enough traffic yet to read a spectrum. Walk, talk, take a charter.',
+    test: (s) => s.energy !== undefined && s.energy < 9,
+    why: 'Too few active pathways to read a spectrum. Walk, talk, take a charter.',
     fix: 'Hold course',
     action: 'hold',
   },

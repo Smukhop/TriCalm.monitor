@@ -147,11 +147,16 @@ export class Steering {
     // How much real traffic is on the board, above the diagonal floor the
     // constructor seeds. The pathologies need this to avoid diagnosing an empty
     // board: the shape of one hand-off is indistinguishable from a loop.
-    let off = 0;
+    let edges = 0;
     for (let i = 0; i < N; i++) {
-      for (let j = 0; j < N; j++) if (i !== j) off += this.A[i * N + j];
+      for (let j = 0; j < N; j++) {
+        if (i !== j && this.A[i * N + j] > 0.12) edges++;
+      }
     }
-    this.spectrum.energy = off;
+    // Distinct active edges, not total volume. Ten units of traffic on two edges
+    // is still one hand-off going nowhere, and its spectrum is indistinguishable
+    // from a pathological loop — so the gate counts breadth, not throughput.
+    this.spectrum.energy = edges;
     for (const p of PATHOLOGIES) {
       if (p.test(this.spectrum)) { this.pathology = p; break; }
     }

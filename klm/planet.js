@@ -257,7 +257,13 @@ export class Planet {
     }
 
     if (!placed) return null;
-    const inst = geometry.clone();
+    // An InstancedBufferGeometry, not a cloned BufferGeometry. Putting
+    // InstancedBufferAttributes on a plain geometry does not make it instanced —
+    // three uploads them as ordinary per-vertex attributes, so vertex 0 reads
+    // instance 0 and every vertex after it reads past the end of a one-element
+    // buffer. The result is geometry folded into a shape nobody authored, which
+    // is exactly what it looked like.
+    const inst = toInstanced(geometry, placed);
     inst.setAttribute('aOffset',
       new THREE.InstancedBufferAttribute(new Float32Array(offs), 3));
     inst.setAttribute('aQuat',
@@ -266,7 +272,6 @@ export class Planet {
       new THREE.InstancedBufferAttribute(new Float32Array(scales), 3));
     inst.setAttribute('aTint',
       new THREE.InstancedBufferAttribute(new Float32Array(tints), 3));
-    inst.instanceCount = placed;
 
     const mat = new THREE.RawShaderMaterial({
       glslVersion: THREE.GLSL3,
@@ -335,13 +340,14 @@ export class Planet {
       }
     }
 
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-    g.setIndex(indices);
+    const base = new THREE.BufferGeometry();
+    base.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    base.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    base.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    base.setIndex(indices);
     // Roads reuse the prop shader with a single instance, so they get the same
     // cel ramp, hatching and rim ink as everything else standing on the ground.
+    const g = toInstanced(base, 1);
     g.setAttribute('aOffset', new THREE.InstancedBufferAttribute(new Float32Array([0, 0, 0]), 3));
     g.setAttribute('aQuat', new THREE.InstancedBufferAttribute(new Float32Array([0, 0, 0, 1]), 4));
     g.setAttribute('aScale', new THREE.InstancedBufferAttribute(new Float32Array([1, 1, 1]), 3));
@@ -383,6 +389,31 @@ export class Planet {
 }
 
 /* ---------------------------------------------------------------- helpers */
+
+/**
+ * Wrap a geometry as an InstancedBufferGeometry with a given instance count,
+ * sharing the source attribute buffers rather than copying them.
+ *
+ * Exported because everything drawn with PROP_VERT needs it — props, roads, and
+ * every part of both figures. A single-instance mesh needs it just as much as a
+ * two-hundred-instance one: the shader reads aOffset/aQuat/aScale/aTint as
+ * instance attributes either way, and on a non-instanced geometry those reads
+ * run off the end of the buffer.
+ */
+export function toInstanced(geo, count) {
+  const inst = new THREE.InstancedBufferGeometry();
+  inst.index = geo.index;
+  for (const name of Object.keys(geo.attributes)) {
+    inst.setAttribute(name, geo.attributes[name]);
+  }
+  inst.instanceCount = count;
+  // Frustum culling on an instanced geometry needs a bounding sphere that covers
+  // every instance, and the one inherited from the source mesh covers only the
+  // prototype at the origin. Everything here sets frustumCulled = false, but
+  // leaving a wrong sphere on the geometry is a trap for the next reader.
+  inst.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
+  return inst;
+}
 
 /**
  * Weld coincident vertices. three's BufferGeometryUtils has one of these, but

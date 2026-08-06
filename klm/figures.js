@@ -13,12 +13,7 @@
 import * as THREE from 'three';
 import { clamp, clamp01, mix, expDamp } from './math.js';
 import { CLOAK_VERT, CLOAK_FRAG, PROP_VERT, PROP_FRAG } from './shaders.js';
-
-/** One instanced-prop material per part, so every figure gets the same cel ramp. */
-function partMaterial(colorHex) {
-  const c = new THREE.Color(colorHex);
-  return { color: c };
-}
+import { toInstanced } from './planet.js';
 
 /**
  * A body part. Built as a plain indexed geometry with the instanced attributes
@@ -26,8 +21,13 @@ function partMaterial(colorHex) {
  * parent Object3D, and reusing the prop shader means a boot, a building and a
  * moon all shade identically.
  */
-function makePart(geo, colorHex) {
+function makePart(src, colorHex) {
   const c = new THREE.Color(colorHex);
+  // Instanced with a count of one. The prop shader reads aOffset/aQuat/aScale/
+  // aTint as *instance* attributes, and on a plain geometry those reads walk off
+  // the end of a one-element buffer — every vertex past the first gets garbage,
+  // which folds the part into a shape nobody modelled.
+  const geo = toInstanced(src, 1);
   geo.setAttribute('aOffset',
     new THREE.InstancedBufferAttribute(new Float32Array([0, 0, 0]), 3));
   geo.setAttribute('aQuat',
