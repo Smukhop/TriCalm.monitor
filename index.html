@@ -667,8 +667,8 @@ const S = {
   surgeIntervalMin: 26, surgeIntervalMax: 64,
   showVessel: true, vesselSpeed: 1.0, vesselBuoyancy: true, vesselWake: true,
   showWorldDressing: true,
-  // flora
-  showFlora: true, floraDensity: 1.0,
+  // flora & ambient life
+  showFlora: true, floraDensity: 1.0, showDrift: true, showFliers: true,
   // spells
   showSpells: true, spellLight: 1.0, spellSpray: 1.0, waterDepthTint: 1.0,
   // post
@@ -788,6 +788,8 @@ const SCHEMA = [
     { k: "biomeAtmos", l: "Biome atmosphere", t: "b" },
     { k: "showFlora", l: "Flora & scatter", t: "b" },
     { k: "floraDensity", l: "Scatter density", t: "f", min: 0, max: 1.6, step: 0.05 },
+    { k: "showDrift", l: "Airborne drift", t: "b" },
+    { k: "showFliers", l: "Flocks", t: "b" },
   ] },
   { group: "False Earth", items: [
     { k: "showPlanet", l: "Planet", t: "b" },
@@ -6980,6 +6982,480 @@ class Flora {
     this.blades = [];
     this.trees = [];
     this._job = null;
+  }
+}
+
+/* =========================================================================
+ * AMBIENT LIFE — the layer that separates a world from a landscape.
+ *
+ * A planet with correct rock, correct water and correct grass on it is still
+ * inert if nothing in the air moves independently of the player. Two systems
+ * cover almost all of that read, and neither costs a per-particle CPU update:
+ *
+ *   DRIFT   whatever the air is carrying. Pollen over the garden world, snow on
+ *           the alpine and ice worlds, embers over the melt, dust in the dune
+ *           sea, drifting plankton in the brine. Motes live in a box that
+ *           follows the camera and wrap toroidally inside it, so the count is
+ *           constant, the density is constant, and there is no spawning.
+ *
+ *   FLIERS  flocks. Each flock is a wedge on a slow wide circuit at altitude,
+ *           each bird a two-triangle wing that flaps and banks. The circuit is
+ *           an analytic function of the clock, so the whole flock is four
+ *           uniforms and one instanced draw.
+ *
+ * Both are entirely GPU-resolved: the vertex shader derives every position from
+ * an instance seed and `uClock`. That is not an optimisation for its own sake —
+ * it is what makes it affordable to have several thousand motes in the air at the
+ * same time as seventeen thousand plants on the ground.
+ * ========================================================================= */
+
+/**
+ * What the air carries, per world. Absent means still air, which is the correct
+ * answer for a vacuum plain and would be a lie anywhere else.
+ *
+ *   count    motes in the box
+ *   box      the side of the wrapping cube, metres. Bigger reads as sparser.
+ *   size     quad half-size in metres, jittered per mote
+ *   fall     downward speed. 0 is neutrally buoyant, high is snow.
+ *   swirl    amplitude of the per-mote wander, which is what stops snow falling
+ *            in straight lines and pollen hanging in a lattice
+ *   wind     how much of the world's wind the mote takes. A heavy ember takes
+ *            less of it than a spore does.
+ *   glow     additive gain. Over 0 the mote emits and survives being in shadow,
+ *            which is what an ember and a biolume spore have in common.
+ */
+const BIOME_DRIFT = {
+  glacis: { count: 2600, box: 150, size: [0.020, 0.055], fall: 1.05, swirl: 0.9,
+    wind: 0.55, tint: "#dcecff", glow: 0.10, opacity: 0.55 },
+  kovir: { count: 3000, box: 170, size: [0.022, 0.060], fall: 0.95, swirl: 1.15,
+    wind: 0.62, tint: "#e4eeff", glow: 0.08, opacity: 0.5 },
+  floe: { count: 2200, box: 160, size: [0.018, 0.050], fall: 1.25, swirl: 0.7,
+    wind: 0.70, tint: "#e8f6ff", glow: 0.10, opacity: 0.5 },
+  verdant: { count: 2000, box: 120, size: [0.030, 0.085], fall: 0.16, swirl: 1.5,
+    wind: 0.45, tint: "#8effd2", glow: 0.85, opacity: 0.75 },
+  verdigris: { count: 1500, box: 130, size: [0.026, 0.070], fall: 0.20, swirl: 1.3,
+    wind: 0.50, tint: "#9fffd8", glow: 0.55, opacity: 0.6 },
+  magma: { count: 1700, box: 145, size: [0.024, 0.075], fall: -0.55, swirl: 1.7,
+    wind: 0.40, tint: "#ff9a3c", glow: 1.9, opacity: 0.9 },
+  ochre: { count: 2400, box: 165, size: [0.028, 0.075], fall: 0.30, swirl: 0.8,
+    wind: 1.00, tint: "#d8b478", glow: 0.0, opacity: 0.34 },
+  regolith: { count: 1400, box: 150, size: [0.020, 0.055], fall: 0.22, swirl: 0.5,
+    wind: 0.85, tint: "#b8ae9a", glow: 0.0, opacity: 0.26 },
+  abyss: { count: 1800, box: 130, size: [0.022, 0.060], fall: -0.10, swirl: 1.1,
+    wind: 0.30, tint: "#7fd8e8", glow: 0.65, opacity: 0.55 },
+  tidal: { count: 1200, box: 140, size: [0.026, 0.070], fall: 0.35, swirl: 1.0,
+    wind: 0.75, tint: "#cfe4e0", glow: 0.05, opacity: 0.32 },
+  shoal: { count: 1300, box: 150, size: [0.026, 0.070], fall: 0.30, swirl: 0.9,
+    wind: 0.85, tint: "#e0dcc0", glow: 0.0, opacity: 0.30 },
+};
+
+/**
+ * Who is in the air, per world.
+ *
+ *   flocks   how many independent wedges
+ *   per      birds in a wedge
+ *   radius   circuit radius, metres
+ *   alt      altitude above the ground under the flock's centre
+ *   span     wingspan, metres
+ *   speed    circuit angular rate scale
+ *   flap     wingbeats per second. A gull glides; a raven works.
+ */
+const BIOME_FLIERS = {
+  kovir: { flocks: 5, per: 7, radius: [90, 250], alt: [34, 95], span: 1.35,
+    speed: 1.0, flap: 2.2, tint: "#1b1b20", glide: 0.55 },
+  verdant: { flocks: 4, per: 9, radius: [70, 190], alt: [22, 58], span: 0.85,
+    speed: 1.25, flap: 4.4, tint: "#2b4438", glide: 0.15 },
+  verdigris: { flocks: 4, per: 6, radius: [80, 210], alt: [20, 62], span: 1.15,
+    speed: 1.05, flap: 2.6, tint: "#e8eef0", glide: 0.62 },
+  tidal: { flocks: 5, per: 8, radius: [70, 220], alt: [14, 48], span: 1.25,
+    speed: 1.1, flap: 2.4, tint: "#f0f4f6", glide: 0.68 },
+  shoal: { flocks: 4, per: 8, radius: [80, 230], alt: [16, 52], span: 1.25,
+    speed: 1.1, flap: 2.4, tint: "#f2f4f0", glide: 0.68 },
+  floe: { flocks: 3, per: 5, radius: [95, 240], alt: [24, 70], span: 1.45,
+    speed: 0.95, flap: 2.0, tint: "#e6f2f8", glide: 0.72 },
+  glacis: { flocks: 2, per: 4, radius: [110, 260], alt: [40, 105], span: 1.55,
+    speed: 0.85, flap: 1.7, tint: "#20242c", glide: 0.78 },
+};
+
+const DRIFT_VERT = G.head + `
+in vec3 position;         // (cornerX, cornerY, 0)
+in vec4 aSeed;            // (x, y, z in 0..1, per-mote random)
+uniform mat4 projectionMatrix;
+uniform mat4 viewMatrix;
+uniform float uClock;
+uniform vec3 uCamPos;
+uniform vec3 uCamRight;
+uniform vec3 uCamUp;
+uniform float uWindAngle;
+uniform float uWindStrength;
+uniform vec4 uDrift;      // (box, fall, swirl, windTake)
+uniform vec2 uSize;       // (min half-size, max half-size)
+out vec2 vUV;
+out float vFade;
+out float vSeed;
+void main(){
+  float box = uDrift.x;
+  vec3 p0 = aSeed.xyz * box;
+  vec2 wd = vec2(sin(uWindAngle), cos(uWindAngle));
+  float w = uWindStrength * uDrift.w;
+
+  // Advect, then wrap into a box centred on the camera. The modulo is the whole
+  // trick: a mote leaving one face re-enters through the opposite one, so the
+  // count and the density stay constant and nothing is ever spawned or retired.
+  vec3 q = p0;
+  q.xz += wd * (w * 2.6 * uClock);
+  q.y  -= uDrift.y * uClock;
+
+  // A per-mote wander at two incommensurate rates. Without this, snow falls in
+  // parallel lines and suspended motes sit on a visible lattice.
+  float ph = aSeed.w * 6.2831853;
+  q += vec3(sin(uClock * 0.6 + ph) + sin(uClock * 1.37 + ph * 2.1) * 0.5,
+            sin(uClock * 0.41 + ph * 1.7) * 0.8,
+            cos(uClock * 0.53 + ph * 1.3) + cos(uClock * 1.19 + ph * 2.7) * 0.5)
+       * uDrift.z;
+
+  vec3 origin = uCamPos - box * 0.5;
+  vec3 world = origin + mod(q - origin, vec3(box));
+
+  // Fade out toward the box faces, or the wrap is a visible pop at the seam.
+  vec3 d = abs(world - uCamPos) / (box * 0.5);
+  float edge = max(max(d.x, d.y), d.z);
+  vFade = 1.0 - smoothstep(0.62, 0.99, edge);
+  // And fade in over the first few metres. A mote one metre from the eye subtends
+  // several degrees, and a bright one at that size reads as a lens artefact rather
+  // than as something in the air — so the near band is metres, not centimetres.
+  float near = length(world - uCamPos);
+  vFade *= smoothstep(1.1, 4.5, near);
+
+  float size = mix(uSize.x, uSize.y, fract(aSeed.w * 7.31));
+  world += (uCamRight * position.x + uCamUp * position.y) * size;
+  vUV = position.xy;
+  vSeed = aSeed.w;
+  gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
+}
+`;
+
+const DRIFT_FRAG = G.head + G.noise + G.shading + G.atmosphere + `
+in vec2 vUV;
+in float vFade;
+in float vSeed;
+out vec4 fragColor;
+uniform vec3 uTint;
+uniform vec3 uSunRadiance;
+uniform vec3 uSunDir;
+uniform vec3 uSH[9];
+uniform float uAmbient;
+uniform vec2 uGlow;        // (glow gain, base opacity)
+void main(){
+  // A round mote with a soft edge. Squaring the falloff keeps the core solid, so
+  // a snowflake reads as a flake rather than as a blur.
+  float r = length(vUV);
+  if (r > 1.0) discard;
+  float a = pow(1.0 - r, 1.6) * vFade * uGlow.y;
+  if (a < 0.004) discard;
+  // Lit by sky bounce plus a broad sun term: a mote is a scatterer, so what you
+  // see is almost all forward scatter, and it has no normal worth speaking of.
+  vec3 lit = shIrradiance(vec3(0.0, 1.0, 0.0), uSH) * uAmbient * 0.31830988618;
+  lit += uSunRadiance * 0.09;
+  vec3 col = uTint * lit;
+  // Emission, and a per-mote twinkle on it. Only the emissive kinds twinkle,
+  // because a dust grain has nothing to twinkle with.
+  if (uGlow.x > 0.001) {
+    float tw = 0.65 + 0.35 * sin(uClock * (1.7 + vSeed * 2.3) + vSeed * 19.0);
+    col += uTint * uGlow.x * tw;
+  }
+  fragColor = vec4(col * a, a);
+}
+`;
+
+const FLIER_VERT = G.head + `
+in vec3 position;         // (spanwise -1..1, 0, chordwise -1..1)
+in vec4 aBird;            // (flock index, position in wedge, phase, size)
+uniform mat4 projectionMatrix;
+uniform mat4 viewMatrix;
+uniform float uClock;
+uniform vec4 uCircuit[8]; // per flock: (centreX, centreZ, radius, rate)
+uniform vec2 uAlt[8];     // per flock: (altitude, ground height under the centre)
+uniform vec4 uFlier;      // (span, flap Hz, glide fraction, wedge spacing)
+out vec3 vWorld;
+out vec3 vNormal;
+out float vShade;
+void main(){
+  int f = int(aBird.x + 0.5);
+  vec4 C = uCircuit[f];
+  vec2 A = uAlt[f];
+
+  // Where the flock is: a circuit, plus a slow radial breathing so it is not a
+  // perfect circle. The phase offset per bird along the circuit is what makes a
+  // wedge trail behind its leader rather than fly abreast.
+  float lane = aBird.y;                       // -1..1 across the wedge
+  float back = abs(lane) * uFlier.w;          // birds behind the leader
+  float ang = uClock * C.w - back * 0.006;
+  float rad = C.z * (1.0 + sin(uClock * 0.17 + float(f)) * 0.10);
+  vec2 centre = C.xy + vec2(cos(ang), sin(ang)) * rad;
+
+  // Heading is the circuit tangent, so a bird always faces where it is going.
+  vec2 tang = vec2(-sin(ang), cos(ang));
+  vec2 side = vec2(tang.y, -tang.x);
+
+  // Bank into the turn. A flock that circles without banking reads as a mobile.
+  float bank = 0.42 * sign(C.w);
+
+  vec3 pos = position * uFlier.x * aBird.w;
+  // Flap. The wing pivots about the body axis, so the span shortens as it rises,
+  // which is what a wingbeat actually looks like from the side.
+  float t = uClock * uFlier.y * 6.2831853 + aBird.z;
+  // Glide fraction: the higher it is, the longer the wing holds flat between
+  // beats, which is the difference between a gull and a raven.
+  float beat = sin(t);
+  beat = sign(beat) * pow(abs(beat), 1.0 + uFlier.z * 5.0);
+  float lift = beat * 0.55 * abs(pos.x) / max(uFlier.x * aBird.w, 0.001);
+  float shorten = 1.0 - abs(beat) * 0.22;
+  pos.x *= shorten;
+  pos.y += lift * uFlier.x * aBird.w;
+
+  // Assemble in the flock frame: chord along the heading, span across it, and
+  // roll the span axis by the bank angle.
+  vec3 T = vec3(tang.x, 0.0, tang.y);
+  vec3 S = vec3(side.x, 0.0, side.y);
+  vec3 U = vec3(0.0, 1.0, 0.0);
+  vec3 Sb = normalize(S * cos(bank) + U * sin(bank));
+  vec3 Ub = normalize(U * cos(bank) - S * sin(bank));
+
+  vec2 off = side * (lane * uFlier.w) + tang * (-back * 0.55);
+  float y = A.y + A.x + sin(uClock * 0.31 + aBird.z) * 1.6;
+  vec3 world = vec3(centre.x + off.x, y, centre.y + off.y)
+             + Sb * pos.x + Ub * pos.y + T * pos.z;
+
+  vWorld = world;
+  // Wings are thin sheets; a plate normal blended toward the flap direction is
+  // enough for the silhouette to catch the sky differently on each stroke.
+  vNormal = normalize(Ub * (1.0 - abs(beat) * 0.5) + Sb * (beat * 0.5));
+  vShade = 0.5 + 0.5 * beat;
+  gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
+}
+`;
+
+const FLIER_FRAG = G.head + G.noise + G.shading + G.atmosphere + `
+in vec3 vWorld;
+in vec3 vNormal;
+in float vShade;
+out vec4 fragColor;
+uniform vec3 uTint;
+uniform vec3 uCamPos;
+uniform vec3 uSunDir;
+uniform vec3 uSunRadiance;
+uniform vec3 uSH[9];
+uniform float uAmbient;
+uniform float uFogDensity;
+uniform float uFogHeight;
+uniform float uFogStart;
+uniform float uAerial;
+uniform sampler2D uSkyLUT;
+void main(){
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(uCamPos - vWorld);
+  // A wing is thin and lit from both sides, so the diffuse term is two-sided and
+  // there is a transmission lobe: a bird against a bright sky is mostly a
+  // silhouette with light coming through its primaries.
+  float ndl = abs(dot(N, uSunDir));
+  vec3 col = uTint * uSunRadiance * 0.31830988618 * (0.35 + 0.65 * ndl);
+  col += uTint * shIrradiance(N, uSH) * uAmbient * 0.31830988618;
+  col += uTint * uSunRadiance * pow(clamp(dot(-V, uSunDir), 0.0, 1.0), 3.0) * 0.22;
+  col *= 0.82 + 0.18 * vShade;
+  col = applyAerial(col, uCamPos, vWorld, -V, uSunDir, uSkyLUT, uSunRadiance,
+                    uFogDensity, uFogHeight, uFogStart, uAerial);
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+/** Hard cap on flocks, matched by the uniform array sizes in FLIER_VERT. */
+const FLOCK_MAX = 8;
+
+class AmbientLife {
+  constructor(terrain, graph) {
+    this.terrain = terrain;
+    this.graph = graph;
+    this.drift = null;
+    this.fliers = null;
+    this._right = new THREE.Vector3();
+    this._up = new THREE.Vector3();
+  }
+
+  setBiome(key) {
+    this.dispose();
+    const q = clamp01(S.floraDensity === undefined ? 1 : S.floraDensity);
+    if (q <= 0.001) return;
+    const d = BIOME_DRIFT[key];
+    if (d && S.showDrift !== false) this._buildDrift(d, q);
+    const f = BIOME_FLIERS[key];
+    if (f && S.showFliers !== false) this._buildFliers(f, q);
+  }
+
+  _quad() {
+    const g = new THREE.InstancedBufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(
+      [-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], 3));
+    g.setIndex([0, 1, 2, 0, 2, 3]);
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
+    return g;
+  }
+
+  _buildDrift(d, quality) {
+    const n = Math.max(64, Math.round(d.count * quality));
+    const geo = this._quad();
+    const seed = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      // A stratified shuffle rather than pure random: pure random in a cube leaves
+      // visible voids at these counts, and a void in falling snow reads as a bug.
+      seed[i * 4] = (i % 16 + hash1(i * 1.7)) / 16;
+      seed[i * 4 + 1] = (Math.floor(i / 16) % 16 + hash1(i * 2.3 + 5)) / 16;
+      seed[i * 4 + 2] = (Math.floor(i / 256) % 16 + hash1(i * 3.1 + 11)) / 16;
+      seed[i * 4 + 3] = hash1(i * 5.7 + 19);
+    }
+    geo.setAttribute("aSeed", new THREE.InstancedBufferAttribute(seed, 4));
+    geo.instanceCount = n;
+
+    const own = {
+      uCamRight: { value: this._right },
+      uCamUp: { value: this._up },
+      uWindStrength: { value: 1 },
+      uDrift: { value: new THREE.Vector4(d.box, d.fall, d.swirl, d.wind) },
+      uSize: { value: new THREE.Vector2(d.size[0], d.size[1]) },
+      uTint: { value: new THREE.Color(d.tint) },
+      uGlow: { value: new THREE.Vector2(d.glow, d.opacity) },
+    };
+    const mat = new THREE.RawShaderMaterial({
+      glslVersion: THREE.GLSL3,
+      vertexShader: DRIFT_VERT, fragmentShader: DRIFT_FRAG,
+      uniforms: Object.assign(own, shared("uCamPos", "uSunDir", "uSunRadiance",
+        "uSH", "uAmbient", "uWindAngle")),
+      transparent: true, depthWrite: false,
+      // Premultiplied, because the fragment already multiplies by alpha: it lets
+      // an emissive mote add light while a dust grain merely occludes.
+      blending: THREE.CustomBlending,
+      blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 8;
+    this.drift = { mesh, material: mat, own, count: n,
+      item: this.graph.add({ mesh, beauty: mat }) };
+  }
+
+  _buildFliers(f, quality) {
+    const flocks = Math.max(1, Math.min(FLOCK_MAX, Math.round(f.flocks * quality)));
+    const per = Math.max(3, Math.round(f.per * quality));
+    const n = flocks * per;
+    // One bird is two triangles: a shallow V, which is the whole silhouette of a
+    // bird at any distance you would actually see one from.
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute([
+      -1.0, 0.0, -0.18, -0.14, 0.0, 0.30, 0.0, 0.0, -0.10,
+      1.0, 0.0, -0.18, 0.14, 0.0, 0.30, 0.0, 0.0, -0.10,
+    ], 3));
+    geo.setIndex([0, 1, 2, 3, 5, 4]);
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
+    const bird = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      const fl = Math.floor(i / per), k = i % per;
+      bird[i * 4] = fl;
+      // Alternate sides of the wedge outward from the leader, so k=0 leads.
+      bird[i * 4 + 1] = k === 0 ? 0
+        : (k % 2 ? 1 : -1) * Math.ceil(k / 2) / Math.ceil(per / 2);
+      bird[i * 4 + 2] = hash1(i * 7.3 + 3) * PI2;
+      bird[i * 4 + 3] = 0.78 + hash1(i * 11.9) * 0.44;
+    }
+    geo.setAttribute("aBird", new THREE.InstancedBufferAttribute(bird, 4));
+    geo.instanceCount = n;
+
+    const circuit = [], alt = [];
+    for (let i = 0; i < FLOCK_MAX; i++) {
+      circuit.push(new THREE.Vector4(0, 0, 0, 0));
+      alt.push(new THREE.Vector2(0, 0));
+    }
+    const own = {
+      uCircuit: { value: circuit },
+      uAlt: { value: alt },
+      // Wedge spacing is quoted in wingspans, not metres: a fixed metre spacing
+      // packs a big flier into its neighbour and scatters a small one.
+      uFlier: { value: new THREE.Vector4(f.span, f.flap, f.glide, f.span * 2.1) },
+      uTint: { value: new THREE.Color(f.tint) },
+    };
+    const mat = new THREE.RawShaderMaterial({
+      glslVersion: THREE.GLSL3,
+      vertexShader: FLIER_VERT, fragmentShader: FLIER_FRAG,
+      uniforms: Object.assign(own, shared("uCamPos", "uSunDir", "uSunRadiance",
+        "uSH", "uAmbient", "uSkyLUT", "uFogDensity", "uFogHeight", "uFogStart",
+        "uAerial")),
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.frustumCulled = false;
+    this.fliers = { mesh, material: mat, own, spec: f, flocks, per,
+      item: this.graph.add({ mesh, beauty: mat }), _placed: false };
+  }
+
+  /**
+   * Move the circuits so the flocks stay in the player's sky.
+   *
+   * A flock whose circuit is fixed in world space is a flock you fly away from and
+   * never see again, and a flock re-centred every frame is a flock that follows
+   * you, which is worse. So a circuit is re-drawn only when its centre has fallen
+   * well outside the view, and it is re-drawn *ahead* of the player rather than on
+   * top of them.
+   */
+  _placeFlocks(px, pz) {
+    const fl = this.fliers;
+    if (!fl) return;
+    const f = fl.spec;
+    for (let i = 0; i < fl.flocks; i++) {
+      const C = fl.own.uCircuit.value[i], A = fl.own.uAlt.value[i];
+      const dx = C.x - px, dz = C.y - pz;
+      const far = Math.hypot(dx, dz) > C.z + 340;
+      if (fl._placed && !far) continue;
+      const a = hash1(i * 13.7 + px * 0.013 + pz * 0.017) * PI2;
+      const r = mix(f.radius[0], f.radius[1], hash1(i * 3.1 + pz * 0.011));
+      // Offset the centre so the circuit passes through the player's sky rather
+      // than orbiting them exactly.
+      const off = r * (0.35 + hash1(i * 5.3) * 0.5);
+      C.set(px + Math.cos(a) * off, pz + Math.sin(a) * off, r,
+        (hash1(i * 17.3) < 0.5 ? -1 : 1) * f.speed * (0.020 + hash1(i * 19.1) * 0.016));
+      A.set(mix(f.alt[0], f.alt[1], hash1(i * 23.9)),
+        this.terrain.heightAt(C.x, C.y));
+    }
+    fl._placed = true;
+  }
+
+  update(dt, controller, camera) {
+    if (this.drift) {
+      // The billboard basis comes off the camera matrix rather than from the rig,
+      // so a mote faces the camera under TAA jitter too.
+      camera.matrixWorld.extractBasis(this._right, this._up, this._v0 ||
+        (this._v0 = new THREE.Vector3()));
+      const at = Biome.live.atmos;
+      this.drift.own.uWindStrength.value = S.windStrength
+        * (S.biomeAtmos && at.wind !== undefined ? at.wind : 1);
+    }
+    if (this.fliers) this._placeFlocks(controller.position.x, controller.position.z);
+  }
+
+  setVisible(v) {
+    if (this.drift) this.drift.item.visible = v;
+    if (this.fliers) this.fliers.item.visible = v;
+  }
+
+  dispose() {
+    for (const it of [this.drift, this.fliers]) {
+      if (!it) continue;
+      const i = this.graph.items.indexOf(it.item);
+      if (i >= 0) this.graph.items.splice(i, 1);
+      this.graph.scene.remove(it.mesh);
+      it.mesh.geometry.dispose();
+      it.material.dispose();
+    }
+    this.drift = null;
+    this.fliers = null;
   }
 }
 
@@ -18911,11 +19387,22 @@ async function main() {
   flora.settle(controller.position.x, controller.position.z);
   flora.setVisible(S.showFlora);
   onChange("showFlora", (v) => flora.setVisible(!!v));
+  const ambient = new AmbientLife(terrain, graph);
+  ambient.setBiome(Biome.key);
+  ambient.setVisible(S.showFlora);
+  onChange("showFlora", (v) => ambient.setVisible(!!v));
+  onChange(["showDrift", "showFliers"], () => {
+    ambient.setBiome(Biome.key);
+    ambient.setVisible(S.showFlora);
+  });
   // Density changes the instance counts, so it rebuilds rather than scaling — and
   // it is a discrete slider precisely because a per-frame rebuild is not one.
   onChange("floraDensity", () => {
     flora.setBiome(Biome.key);
+    flora.settle(controller.position.x, controller.position.z);
     flora.setVisible(S.showFlora);
+    ambient.setBiome(Biome.key);
+    ambient.setVisible(S.showFlora);
   });
 
   rig.groundAt = (x, z) => terrain.heightAt(x, z);
@@ -18995,6 +19482,8 @@ async function main() {
     // lie the dissolve would tell for free.
     flora.setBiome(key);
     flora.setVisible(S.showFlora);
+    ambient.setBiome(key);
+    ambient.setVisible(S.showFlora);
     if (S.suitLivery === "auto") suitRender.setLivery("auto");
     overlay.syncEnum("biome");
   }
@@ -19094,6 +19583,7 @@ async function main() {
     waterRig.update(1 / 60, rig, controller, spray);
     sea.update(camera.position);
     flora.update(1 / 60, controller);
+    ambient.update(1 / 60, controller, camera);
     wake.update(1 / 60);
     spray.update(1 / 60, camera, terrain);
     spells.update(1 / 60);
@@ -19305,7 +19795,7 @@ async function main() {
     conduits.update();
     // After the terrain clipmap and the sea: a reseat samples the height mirror
     // and the water depth, and both are this frame's as of the two calls above.
-    if (S.showFlora) flora.update(dt, controller);
+    if (S.showFlora) { flora.update(dt, controller); ambient.update(dt, controller, camera); }
     const tTerrain = performance.now();
     charRender.sync();
     suitRender.sync();
@@ -19357,7 +19847,7 @@ async function main() {
     structures, conduits, pilot, director, ledger, REALMS, SYSTEM_MANIFEST,
     Works, FAB_PHASES, FAB_STYLES, fabStyle, CELL_ROSTER, COUNCIL_SEATS,
     ObjectSculptSpec, NexusIterationSpec, planRealm,
-    flora, BIOME_FLORA,
+    flora, BIOME_FLORA, ambient, BIOME_DRIFT, BIOME_FLIERS,
     start() {
       if (runtimeDisposed || runtimeActive) return;
       runtimeActive = true; prev = performance.now(); requestAnimationFrame(frame);
