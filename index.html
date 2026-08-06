@@ -290,15 +290,33 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;background:v
   margin-top:1px}
 .jdiag.warn{border-left-color:#ff9b3d}
 .jdiag.warn b{color:#ffbd6a}
-.jsus{display:grid;grid-template-columns:34px minmax(0,1fr);gap:0 6px;
+.jsus{display:grid;grid-template-columns:62px minmax(0,1fr);gap:0 6px;
   align-items:baseline;font-size:8.5px;letter-spacing:.04em;padding:1px 0;
   color:rgba(125,147,171,.66)}
-.jsus k{color:rgba(120,150,190,.55);font-size:8px}
+.jsus k{color:rgba(120,150,190,.55);font-size:8px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
 .jsus.s3{color:rgba(255,155,61,.86)}
 .jsus.s3 k{color:#ff9b3d}
 .jsus.s2{color:rgba(255,213,128,.74)}
 .jnote{margin-top:4px;font-size:7px;letter-spacing:.10em;
   color:rgba(125,147,171,.36)}
+/* The gap table. Two lines per row: what it is, and what it still is not. The
+   second line is the point — a build that states its own limits is easier to
+   trust than one that only lists what works. */
+.grow{display:grid;grid-template-columns:9px minmax(0,1fr);gap:0 6px;
+  padding:2px 0;border-top:1px solid rgba(95,216,255,.07)}
+.grow:first-child{border-top:0}
+.grow k{font-size:9px;line-height:1.3;color:rgba(120,150,190,.45)}
+.grow b{display:block;font-weight:400;font-size:9px;letter-spacing:.10em;
+  color:rgba(196,220,240,.88)}
+.grow i{display:block;font-style:normal;font-size:8px;letter-spacing:.03em;
+  color:rgba(125,147,171,.7);margin-top:1px}
+.grow u{display:block;text-decoration:none;font-size:7.5px;letter-spacing:.03em;
+  color:rgba(125,147,171,.42);margin-top:1px}
+.grow.on k{color:var(--jade)}
+.grow.on b{color:rgba(111,227,176,.92)}
+.grow.off k{color:#ff9b3d}
+.grow.off b{color:rgba(255,189,106,.9)}
 
 /* the active item gets the room it deserves */
 .lactive{border-left:1px solid var(--cyan);padding:2px 0 3px 8px;margin:2px 0 0 1px;
@@ -323,11 +341,14 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;background:v
 .lstep i.on{background:var(--cyan);box-shadow:0 0 7px rgba(95,216,255,.7)}
 
 /* the resident workforce — nine cells, each one line, state in the colour */
-.wrow{display:grid;grid-template-columns:34px minmax(0,1fr) 26px;gap:0 6px;
+/* 62px, not 34px: the tag column used to hold a discipline code like CIV-1, and
+   it now holds a canonical call sign like SIROCCO-1 or LANTERN-7. The old width
+   wrapped every long one onto its own line and broke the row grid. */
+.wrow{display:grid;grid-template-columns:62px minmax(0,1fr) 26px;gap:0 6px;
   align-items:baseline;font-size:8.5px;letter-spacing:.06em;padding:1px 0;
   color:rgba(125,147,171,.55)}
 .wrow k{text-decoration:none;color:rgba(120,150,190,.62);font-size:8px;
-  letter-spacing:.10em}
+  letter-spacing:.06em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wrow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wrow em{font-style:normal;font-size:7.5px;text-align:right;
   font-variant-numeric:tabular-nums;color:rgba(125,147,171,.45)}
@@ -426,7 +447,7 @@ body.idle #view{cursor:none}
   <div class="vg"><u>BREATH</u><div class="vb br"><s id="barBreath"></s></div></div>
   <i id="vitalNote"></i>
 </div>
-<div id="hint">autonomy engaged &mdash; p stand down &middot; l ledger &middot; j steer &middot; n skip item &middot; m skip realm &middot; water realms embark the Loki cutter automatically &middot; click to take the controls &middot; f1 overlay</div>
+<div id="hint">autonomy engaged &mdash; p stand down &middot; l ledger &middot; j steer &middot; k export &middot; n skip item &middot; m skip realm &middot; water realms embark the Loki cutter automatically &middot; click to take the controls &middot; f1 overlay</div>
 
 <div id="charter">
   <div class="ch"><b id="chRealm">REALM I</b><i id="chIdx">CHARTER 1 / 11</i></div>
@@ -478,6 +499,12 @@ body.idle #view{cursor:none}
     <div id="jSuspect"></div>
     <div class="jnote">coupling over observable rig events &#183; not a model
       Jacobian</div>
+  </div>
+
+  <div class="lsec" id="secGaps">
+    <h4>INTEGRATION <span id="gapCov">0 / 0</span></h4>
+    <div id="gapList"></div>
+    <div class="jnote" id="gapFoot">K exports the whole state as JSON</div>
   </div>
 
   <div class="grand">
@@ -599,6 +626,7 @@ body.idle #view{cursor:none}
       <k>P</k><span>stand the agent down / send it back to work</span>
       <k>L</k><span>hide the build ledger</span>
       <k>J</k><span>apply what the J-Lens prescribes &mdash; re-route, ablate or steer</span>
+      <k>K</k><span>export the integration state &mdash; canon, audit chain, cells, gaps</span>
       <k>N / M</k><span>skip the current item / commission the realm early</span>
       <k>CLICK</k><span>capture the pointer and take the controls</span>
       <k>W A S D</k><span>move, relative to camera &middot; arrows also &middot; SHIFT sprint</span>
@@ -1695,13 +1723,15 @@ const BINDINGS = {
   skipRealm: ["KeyM"],
   /** Apply whatever the J-Lens currently prescribes. */
   steer: ["KeyJ"],
+  /** Export the whole integration state as JSON. */
+  export: ["KeyK"],
 };
 const SPELL_KEYS = { Digit1: 1, Digit2: 2, Digit3: 3, Digit4: 4, Digit5: 5 };
 /** Edge-triggered actions, consumed once per frame by the run loop. */
 const actions = { biome: 0, suitMode: false, outfitCycle: false, beam: false,
   chrome: false, surge: false,
   autonomy: false, ledger: false, skipTask: false, skipRealm: false,
-  steer: false };
+  steer: false, export: false };
 
 const keys = Object.create(null);
 const BASE_LOOK = 0.0022;
@@ -1780,6 +1810,7 @@ function initInput(canvas, hooks) {
     else if (act === "skipTask") actions.skipTask = true;
     else if (act === "skipRealm") actions.skipRealm = true;
     else if (act === "steer") actions.steer = true;
+    else if (act === "export") actions.export = true;
     else if (act === "sprint" && S.sprintToggle) latch.sprint = !latch.sprint;
     else if (act === "surfKey") { if (S.surfToggle) latch.surf = !latch.surf; else latch.surf = true; }
   });
@@ -1910,6 +1941,7 @@ function endInputFrame() {
   actions.chrome = false; actions.surge = false;
   actions.autonomy = false; actions.ledger = false;
   actions.skipTask = false; actions.skipRealm = false; actions.steer = false;
+  actions.export = false;
 }
 
 /* =========================================================================
@@ -17118,6 +17150,15 @@ class Overlay {
   }
 }
 let spellsRef = null;
+/**
+ * Module-scope handles for the inspector's probes.
+ *
+ * The probes have to run against the LIVE runtime, or a status row is a label
+ * somebody set rather than something checked, and the pilot and the crew are both
+ * built inside main(). Two references is the whole cost of the table being able to
+ * contradict itself when something breaks.
+ */
+let pilotRef = null, crewRef = null;
 
 /* =========================================================================
  * THE MASON — persistent procedural architecture.
@@ -18199,6 +18240,49 @@ const FAB_PHASES = [
 ];
 
 /* =========================================================================
+ * LOGISTICS — what a phase consumes, and what happens when it runs out.
+ *
+ * The gap this closes was named in the integration report as "completion derives
+ * from resources and verified work, not elapsed time alone". Before this, a phase
+ * advanced on nothing but rate × condition × time, which meant every bottleneck
+ * the monitor could show was a SEQUENCING bottleneck — a cell waiting behind the
+ * phase in front. Real fabrication stalls at least as often on supply, and a
+ * monitor that cannot distinguish "blocked by the phase in front" from "blocked
+ * because the steel has not landed" is missing half of what an operator needs.
+ *
+ * Four stock classes, one per thing a trade actually consumes. They are not a
+ * currency: nothing is bought, and there is no economy. They are a queue between
+ * the avatars — who deliver, by raising masses and by running the causeway — and
+ * the cells, who draw.
+ *
+ * A shortage is a DIFFERENT state from a precedence stall, and both surface: the
+ * cell reports which class it is short of, the council can see it, and the
+ * steering field sees the escalation. That is the whole justification for the
+ * feature — not that scarcity is interesting, but that the two bottlenecks look
+ * identical without it and want opposite interventions.
+ * ========================================================================= */
+const STOCK_CLASSES = [
+  { id: "bulk", name: "BULK & AGGREGATE", disc: ["civil"] },
+  { id: "steel", name: "STEEL & CLADDING", disc: ["struct"] },
+  { id: "plant", name: "PLANT & ROTATING", disc: ["mech"] },
+  { id: "spool", name: "SPOOL & CABLE", disc: ["piping", "eni"] },
+];
+/** Discipline -> the class its trade draws from. QA draws nothing: an inspection
+ *  consumes time and attention, and pretending it consumes steel would be the
+ *  kind of tidy-looking wrongness this whole layer exists to avoid. */
+const DISC_STOCK = {};
+for (const c of STOCK_CLASSES) for (const d of c.disc) DISC_STOCK[d] = c.id;
+/**
+ * Units drawn per unit of phase progress, by phase. Roughly proportional to each
+ * phase's share of the work, so a nineteen-percent mechanical erection draws about
+ * three times what a six-percent site prep does.
+ */
+const PHASE_DRAW = {
+  site: 0.9, found: 2.2, struct: 2.0, mech: 2.6, rotate: 1.1,
+  pipe: 2.1, eni: 1.5, clad: 1.0, precom: 0, commis: 0, handover: 0,
+};
+
+/* =========================================================================
  * FABRICATION STYLES — one per world, determined by its ground.
  *
  * FAB_PHASES above is the *timeline*: eleven phases whose shares sum to one. It
@@ -18595,7 +18679,14 @@ const Works = {
     this.queue.length = 0;
     this.records.length = 0;
     this.events.length = 0;
-    this.tally = { phasesDone: 0, holdsRaised: 0, holdsCleared: 0, handedOver: 0 };
+    this.tally = { phasesDone: 0, holdsRaised: 0, holdsCleared: 0, handedOver: 0,
+      shortfalls: 0, delivered: 0 };
+    // Opening stock: enough to start, not enough to finish. A realm that never
+    // runs short has no logistics in it, and a realm that starts empty is a realm
+    // whose first hour is a wall of red for no reason anyone chose.
+    this.stock = {};
+    for (const c of STOCK_CLASSES) this.stock[c.id] = 40;
+    this._shortOf = {};
     this.cells = this._crew(BIOME_REALM[Biome.key]);
     this.council = COUNCIL_SEATS.map((s) => ({ ...s, hold: false, why: "",
       cleared: false, evidence: [], seen: 0 }));
@@ -18748,6 +18839,15 @@ const Works = {
     // Bigger masses are more work. Scaled off the same footprint and height the
     // pilot uses to decide how long to stand there sculpting, so the two agree.
     const weight = 1 + spec.footprint * 0.12 + spec.height * 0.02;
+    // Raising a mass is also a delivery. The avatars are the supply line on every
+    // world — there is no depot NPC and no convoy — so the same act that creates
+    // eleven phases of work also lands the materials to start them. That coupling
+    // is deliberate: it means an idle pilot starves the cells, which is true.
+    const load = 14 + spec.footprint * 1.5 + spec.height * 0.4;
+    for (const c of STOCK_CLASSES) this.stock[c.id] += load;
+    this.tally.delivered += load * STOCK_CLASSES.length;
+    Audit.emit("logistics.delivered", { mass: spec.label,
+      perClass: +load.toFixed(1) }, "works");
     const rec = {
       label: spec.label, mass, weight, spec,
       phase: 0, progress: 0, complete: 0, done: false,
@@ -18799,6 +18899,10 @@ const Works = {
     // a field over. Solving it here rather than in the frame loop keeps the two
     // from ever disagreeing about which realm's board is being diagnosed.
     Steering.update(dt);
+    // A standing resupply, small enough that it cannot carry a realm on its own.
+    // Its job is to stop a stalled pilot deadlocking the works forever: a shortage
+    // should be a bottleneck the operator can watch clear, not a terminal state.
+    for (const c of STOCK_CLASSES) this.stock[c.id] += 0.55 * rate * dt;
     // On a monitored world the avatars are the workforce, so fabrication advances
     // with the pilot's own build rate and no cell ever appears on station.
     if (!this.inhabited) {
@@ -18837,6 +18941,17 @@ const Works = {
           // because a wall of STARVED is a bottleneck and a wall of IDLE is not.
           c.idleT += dt;
           c.state = this.queue.length > 0 ? CELL_STARVED : CELL_IDLE;
+          if (c.shortOf && c.state === CELL_STARVED && !c._counted) {
+            c._counted = true;
+            this.tally.shortfalls++;
+            Audit.emit("logistics.short", { cell: c.id, call: c.call,
+              disc: c.disc, klass: c.shortOf,
+              onHand: +this.stock[c.shortOf].toFixed(1) }, "works");
+            // A supply stall is an escalation like any other: the cells cannot fix
+            // it, so it goes to the council, and the steering field sees the
+            // one-way traffic that a shortage produces.
+            Steering.drive("cells", "council", 1.8);
+          } else if (!c.shortOf) { c._counted = false; }
           continue;
         }
         c.item = item; c.state = CELL_WORKING; c.progress = 0; c.idleT = 0;
@@ -18869,7 +18984,21 @@ const Works = {
       // The cell's own condition scales its trade rate. This is where fatigue and
       // skill stop being labels: a tired crew is measurably slower and a practised
       // one measurably faster, and both are visible in the phase clock.
-      this._advance(item, c.rate * this.condition(c) * rate * dt / item.rec.weight, c);
+      const step = c.rate * this.condition(c) * rate * dt / item.rec.weight;
+      // Draw what the step consumes. Running dry mid-phase does not abandon the
+      // work — it stops it where it is, which is what actually happens on a site
+      // and is why a half-finished phase is a worse problem than an unstarted one.
+      const cls = DISC_STOCK[c.disc];
+      const want = (PHASE_DRAW[FAB_PHASES[item.phaseIndex].id] || 0) * step * 10;
+      if (cls && want > 0) {
+        if (this.stock[cls] < want) {
+          c.shortOf = cls;
+          c.state = CELL_STARVED;
+          continue;
+        }
+        this.stock[cls] -= want;
+      }
+      this._advance(item, step, c);
       c.progress = item.progress;
       // Fatigue accrues while working. Sixteen minutes of continuous work reaches
       // the cap, which is roughly a realm — so a crew that carries a whole charter
@@ -18886,13 +19015,31 @@ const Works = {
   },
 
   _claim(cell) {
+    let sawWork = false;
     for (const item of this.queue) {
       if (FAB_PHASES[item.phaseIndex].disc !== cell.disc) continue;
       if (!this._available(item)) continue;
+      sawWork = true;
+      // Work exists and precedence allows it — but a trade cannot start what it
+      // has nothing to build with. Recording WHICH class is short is the point:
+      // "waiting behind the phase in front" and "waiting on steel" are different
+      // bottlenecks and they want opposite interventions.
+      const need = this.shortOf(cell);
+      if (need) { cell.shortOf = need; continue; }
+      cell.shortOf = "";
       item.claimed = true;
       return item;
     }
+    if (!sawWork) cell.shortOf = "";
     return null;
+  },
+
+  /** The stock class this cell is short of, or "" if it can start. */
+  shortOf(cell) {
+    const cls = DISC_STOCK[cell.disc];
+    // QA draws nothing. An inspection consumes attention, not material.
+    if (!cls) return "";
+    return this.stock[cls] > 1 ? "" : cls;
   },
 
   /**
@@ -19022,6 +19169,11 @@ const Works = {
           { source: "Works.tally", measure: "holds raised / cleared this session",
             value: this.tally.holdsRaised + " / " + this.tally.holdsCleared,
             threshold: null, op: "info", over: "session" },
+          { source: "Works.stock", measure: "cells stopped on supply",
+            value: this.cells.filter((c) => c.shortOf).length,
+            threshold: 0, op: "info",
+            over: STOCK_CLASSES.map((k) =>
+              k.id + " " + this.stock[k.id].toFixed(0)).join(" · ") },
         ] },
       { ok: this.tally.handedOver > 0,
         why: "NO SYSTEM YET PROVEN END TO END",
@@ -19534,6 +19686,12 @@ const Steering = {
           why: "no " + c.disc + " work exists here — " + style.label.toLowerCase() });
       } else if (c.state === CELL_HOLD) {
         out.push({ cell: c, sev: 2, share, why: "held · " + c.holdWhy });
+      } else if (c.state === CELL_STARVED && c.shortOf) {
+        // The distinction the logistics layer exists to make. A precedence stall
+        // clears itself when the phase in front closes; a supply stall does not,
+        // and telling an operator to wait on the wrong one wastes the realm.
+        out.push({ cell: c, sev: 3, share,
+          why: "no " + c.shortOf + " on site — supply, not sequence" });
       } else if (c.state === CELL_STARVED && c.idleT > 6) {
         out.push({ cell: c, sev: 2, share,
           why: "starved " + c.idleT.toFixed(0) + "s behind a phase it does not own" });
@@ -19888,8 +20046,10 @@ function worldChecksum(pilot) {
   }
   for (const c of Works.cells) {
     parts.push("c" + c.tag + ":" + c.state + ":" + q(c.progress) + ":" + c.done
-      + ":" + q(c.holdT) + ":" + q(c.fatigue) + ":" + q(c.skill));
+      + ":" + q(c.holdT) + ":" + q(c.fatigue) + ":" + q(c.skill)
+      + ":" + (c.shortOf || "-"));
   }
+  for (const k of STOCK_CLASSES) parts.push("m" + k.id + ":" + q(Works.stock[k.id]));
   for (const s of Works.council) {
     parts.push("s" + s.tag + ":" + (s.hold ? 1 : 0) + ":" + (s.cleared ? 1 : 0));
   }
@@ -21230,6 +21390,285 @@ function hhmmss(s) {
     + String(s % 60).padStart(2, "0");
 }
 
+/* =========================================================================
+ * THE INSPECTOR — what this build connects, and what it still does not.
+ *
+ * The v20 integration report's most useful idea was not any of its systems. It
+ * was that the build should carry its own gap analysis, in machine-readable form,
+ * so nobody has to reconstruct from the outside which claims are simulated and
+ * which are scaffolding.
+ *
+ * So this is that table, kept next to the code it describes and wired to the live
+ * runtime rather than typed out separately. `status` is not a label somebody set —
+ * where it can be, it is computed from a probe that runs against the world as it
+ * stands, so a row cannot claim CONNECTED after the thing it describes is deleted.
+ *
+ * The honesty is the feature. A monitor that says "AAA mechanics: missing" is more
+ * trustworthy than one that says nothing, and an export that carries the world
+ * checksum, the audit chain head and the failing probes is a bug report that
+ * writes itself.
+ * ========================================================================= */
+
+const GAP_ROWS = [
+  {
+    id: "canon", name: "Canon & schema", stage: "Foundation",
+    branch: "feat/core-authoritative-schema",
+    detail: "One manifest of worlds, cells and Council seats, asserted at boot.",
+    // A probe returns { ok, note }. Anything that cannot be probed says so
+    // rather than defaulting to a pass, because a status nothing checks is a
+    // status that will drift.
+    probe: () => {
+      try {
+        const c = validateCanon();
+        return { ok: true, note: c.worlds + " worlds · " + c.inhabited
+          + " inhabited · " + c.cells + " named cells · throws on mismatch" };
+      } catch (e) { return { ok: false, note: String(e.message).split("\n")[0] }; }
+    },
+    gap: "Schemas are in-file rather than a generated shared package, and there "
+      + "are no versioned migrations.",
+  },
+  {
+    id: "agents", name: "Unified agent identity", stage: "Autonomy",
+    branch: "refactor/agents-unified-entity",
+    detail: "Named cells back the fabrication rows; the nine trades are profiles.",
+    probe: () => {
+      const cells = Works.cells;
+      if (!Works.realm) return { ok: false, note: "no realm open" };
+      if (!Works.inhabited) return { ok: true, note: "monitored world · avatar-crewed" };
+      const named = cells.filter((c) => c.id && c.call).length;
+      const moving = cells.some((c) => c.fatigue > 0 || c.skill > 0);
+      return { ok: named === cells.length && cells.length > 0,
+        note: named + "/" + cells.length + " named"
+          + (moving ? " · fatigue and skill are live" : " · no wear yet") };
+    },
+    gap: "No inventory, memory, relationships or permissions; the trade binding "
+      + "is by index rather than matched on capability.",
+  },
+  {
+    id: "commands", name: "Commands & audit", stage: "Foundation",
+    branch: "feat/core-command-event-bus",
+    detail: "Consequential mutations are named commands; events are hash-chained.",
+    probe: () => {
+      const v = Audit.verify();
+      return { ok: v.ok, note: v.ok
+        ? Audit.commands.length + " commands · " + Audit.events.length
+          + " events · chain intact to " + Audit.head
+        : "chain broken at " + v.brokeAt + " (" + v.reason + ")" };
+    },
+    gap: "In-memory and single-process. No durable store, no server authority, "
+      + "and validation lives in each handler rather than a policy layer.",
+  },
+  {
+    id: "sim", name: "Deterministic simulation", stage: "World simulation",
+    branch: "feat/sim-fixed-timestep",
+    detail: "Authoritative state advances on a fixed 20 Hz tick from named streams.",
+    probe: () => ({ ok: Sim.tick > 0,
+      note: "tick " + Sim.tick + " · " + Sim.HZ + " Hz · " + Rng.report().length
+        + " streams · " + (Sim.dropped > 0.5
+          ? Sim.dropped.toFixed(1) + "s shed" : "no time shed") }),
+    gap: "Presentation still owns the render frame by design, but terrain bakes "
+      + "and flora reseats are not on the tick and are not part of the checksum.",
+  },
+  {
+    id: "works", name: "Fabrication simulation", stage: "World simulation",
+    branch: "feat/sim-infrastructure-work",
+    detail: "Named cells draw weighted phases; holds come from the trade or the world.",
+    probe: () => {
+      if (!Works.realm) return { ok: false, note: "no realm open" };
+      return { ok: Works.records.length > 0,
+        note: Works.records.length + " masses · " + Works.tally.phasesDone
+          + " phases closed · " + Works.openHolds + " open holds" };
+    },
+    gap: "Materials are modelled; equipment availability, weather windows and "
+      + "inspection sign-off are not.",
+  },
+  {
+    id: "logistics", name: "Materials & supply", stage: "World simulation",
+    branch: "feat/sim-logistics",
+    detail: "Four stock classes. Raising a mass delivers; trades draw as they work.",
+    probe: () => {
+      if (!Works.realm) return { ok: false, note: "no realm open" };
+      const short = Works.cells.filter((c) => c.shortOf);
+      return { ok: true, note: STOCK_CLASSES.map((k) =>
+        k.id + " " + Works.stock[k.id].toFixed(0)).join(" · ")
+        + (short.length ? " · " + short.length + " stopped on supply" : " · none short") };
+    },
+    gap: "One flat pool per class with no lead times, no transport, no storage "
+      + "limits and no per-world cost — the avatars are the only supply line.",
+  },
+  {
+    id: "evidence", name: "Evidence & Council", stage: "Governance",
+    branch: "feat/evidence-council-runtime",
+    detail: "Every seat's ruling carries the measures, sources and thresholds it used.",
+    probe: () => {
+      if (!Works.inhabited) return { ok: true, note: "no council on a monitored world" };
+      const seen = Works.council.filter((s) => s.seen > 0);
+      const withEv = Works.council.filter((s) => s.evidence && s.evidence.length);
+      return { ok: seen.length === 0 || withEv.length === seen.length,
+        note: seen.length ? withEv.length + "/" + seen.length
+          + " rulings carry evidence" : "council has not yet sat" };
+    },
+    gap: "Evidence is a flat list per ruling, not a provenance graph, and the "
+      + "three seats share one model with no appeal or remediation path.",
+  },
+  {
+    id: "steering", name: "Delegation steering", stage: "Governance",
+    branch: "feat/steering-field",
+    detail: "An 8x8 coupling field over counted events, diagnosed by its spectrum.",
+    probe: () => {
+      const sp = Steering.spectrum;
+      return { ok: !!sp, note: sp
+        ? sp.edges + " pathways · λ " + sp.dominant.toFixed(2) + " · "
+          + Steering.pathology.label
+        : "not yet solved" };
+    },
+    gap: "A field over observable rig events, not the Jacobian of any model's "
+      + "hidden state — and nothing here claims to read one.",
+  },
+  {
+    id: "crew", name: "Embodied agents", stage: "AAA mechanics",
+    branch: "feat/agents-embodied",
+    detail: "Every cell has a body that walks to its work and animates its state.",
+    probe: () => {
+      if (!Works.inhabited) return { ok: true, note: "monitored world · no crew" };
+      const n = crewRef ? crewRef.bodies.length : 0;
+      return { ok: n === Works.cells.length && n > 0,
+        note: n + " bodies for " + Works.cells.length + " cells" };
+    },
+    gap: "Walks straight to the target with no navigation graph, no avoidance and "
+      + "no interaction with the player or each other.",
+  },
+  {
+    id: "pilot", name: "Autonomous pilot", stage: "Autonomy",
+    branch: "feat/agents-autonomous-runtime",
+    detail: "Executes an authored realm plan and reports partials and recoveries.",
+    probe: () => ({ ok: !!(pilotRef && pilotRef.plan),
+      note: pilotRef && pilotRef.plan
+        ? "realm " + pilotRef.plan.realm.numeral + " · item "
+          + (pilotRef.taskIndex + 1) + "/" + pilotRef.plan.tasks.length
+        : "no plan" }),
+    gap: "A flat authored queue with direct seek. No HTN or GOAP planning, no "
+      + "behaviour trees, and no replanning around conditions that change.",
+  },
+  {
+    id: "navigation", name: "Navigation graph", stage: "AAA mechanics",
+    branch: "feat/navigation-world-graph",
+    detail: "Not present. Movers seek directly and sidestep when wedged.",
+    probe: () => ({ ok: false, note: "not implemented" }),
+    gap: "No reachability, no path costs, no dynamic obstacles.",
+  },
+  {
+    id: "persistence", name: "Persistence & replay", stage: "Platform",
+    branch: "feat/save-event-store",
+    detail: "A seed plus a tick count reproduces a world; the export carries both.",
+    probe: () => ({ ok: true,
+      note: "seed 0x" + Rng.seed.toString(16) + " · checksum "
+        + worldChecksum(pilotRef) }),
+    gap: "Nothing is written to disk. There is no snapshot, no event store and "
+      + "no migration path — replay works within a session only.",
+  },
+  {
+    id: "platform", name: "Enterprise platform", stage: "Platform",
+    branch: "ops/production-platform",
+    detail: "Not present. The build is a single browser-local file.",
+    probe: () => ({ ok: false, note: "not implemented" }),
+    gap: "No server authority, cloud saves, telemetry, security or CI.",
+  },
+];
+
+const Inspector = {
+  /** Run every probe. Cheap enough to call on the panel's own refresh. */
+  scan() {
+    return GAP_ROWS.map((r) => {
+      let p;
+      try { p = r.probe(); } catch (e) { p = { ok: false, note: "probe threw: " + e.message }; }
+      return { id: r.id, name: r.name, stage: r.stage, branch: r.branch,
+        detail: r.detail, gap: r.gap, ok: !!p.ok, note: p.note || "" };
+    });
+  },
+
+  /** How much of the table is currently passing its own probe. */
+  coverage() {
+    const rows = this.scan();
+    return { ok: rows.filter((r) => r.ok).length, total: rows.length, rows };
+  },
+
+  /**
+   * The whole integration state as one JSON object.
+   *
+   * Deliberately includes the failing rows and the reasons. An export that only
+   * carried what works would be marketing; this is meant to be pasteable into a
+   * bug report, which means the checksum, the chain head, the seed and the tick
+   * have to be in it — those four are what make a report reproducible.
+   */
+  export() {
+    const cov = this.coverage();
+    return {
+      schema: "jaganaught.loki.monitor/2",
+      generatedAtTick: Sim.tick,
+      simulation: {
+        hz: Sim.HZ, tick: Sim.tick, seconds: +Sim.seconds.toFixed(2),
+        seed: "0x" + Rng.seed.toString(16),
+        checksum: worldChecksum(pilotRef),
+        streams: Rng.report(),
+        droppedSeconds: +Sim.dropped.toFixed(2),
+      },
+      canon: CANON,
+      audit: {
+        head: Audit.head, events: Audit.events.length,
+        commands: Audit.commands.length, evicted: Audit.evicted,
+        verify: Audit.verify(),
+        byType: [...Audit.counts.entries()].sort((a, b) => b[1] - a[1])
+          .map(([type, n]) => ({ type, n })),
+      },
+      realm: Works.realm ? {
+        id: Works.realm.id, numeral: Works.realm.numeral, seat: Works.realm.seat,
+        biome: Works.realm.biome, inhabited: Works.inhabited,
+        style: Works.style.label,
+        completion: +Works.completion.toFixed(4),
+        tally: Object.assign({}, Works.tally),
+      } : null,
+      cells: Works.cells.map((c) => ({
+        id: c.id, call: c.call, canonName: c.canonName, disc: c.disc,
+        trade: c.name, roles: c.roles, caps: c.caps,
+        state: ["IDLE", "WORKING", "HOLD", "STARVED"][c.state],
+        done: c.done, progress: +c.progress.toFixed(3),
+        fatigue: +c.fatigue.toFixed(3), skill: +c.skill.toFixed(3),
+        holdWhy: c.holdWhy || undefined,
+        mass: c.item && c.item.rec ? c.item.rec.label : undefined,
+      })),
+      council: Works.council.map((s) => ({
+        seat: s.tag, axis: s.name, hold: s.hold, cleared: s.cleared,
+        why: s.why || undefined, reviews: s.seen, evidence: s.evidence || [],
+      })),
+      steering: Steering.spectrum ? {
+        dominant: +Steering.spectrum.dominant.toFixed(4),
+        participation: +Steering.spectrum.participation.toFixed(4),
+        circulation: +Steering.spectrum.circulation.toFixed(4),
+        edges: Steering.spectrum.edges,
+        pathology: Steering.pathology.id,
+        driver: Steering.driver.id, quietest: Steering.quietest.id,
+        systems: STEER_SYSTEMS.map((x) => x.id),
+      } : null,
+      crew: crewRef ? crewRef.report() : [],
+      coverage: { connected: cov.ok, total: cov.total },
+      gaps: cov.rows,
+    };
+  },
+
+  /** Copy the export to the clipboard, and fall back to the console. */
+  async copy() {
+    const text = JSON.stringify(this.export(), null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      return { ok: true, bytes: text.length };
+    } catch (e) {
+      console.log(text);
+      return { ok: false, bytes: text.length, why: "clipboard refused; logged instead" };
+    }
+  },
+};
+
 const ledger = {
   on: true,
   _acc: 0,
@@ -21256,6 +21695,8 @@ const ledger = {
       jDom: g("jDom"), jPart: g("jPart"), jCirc: g("jCirc"), jTrace: g("jTrace"),
       jDiag: g("jDiag"), jLabel: g("jLabel"), jWhy: g("jWhy"),
       jSuspect: g("jSuspect"),
+      secGaps: g("secGaps"), gapCov: g("gapCov"), gapList: g("gapList"),
+      gapFoot: g("gapFoot"),
       tMass: g("tMass"), tKm: g("tKm"), tRealm: g("tRealm"), tUp: g("tUp"),
       tPhase: g("tPhase"), tHold: g("tHold"), tFail: g("tFail"),
       badge: g("autob"), badgeState: g("autoState"),
@@ -21435,12 +21876,12 @@ const ledger = {
       let h = "", quietStarved = 0, quietIdle = 0;
       for (const c of Works.cells) {
         if (c.state === CELL_WORKING && c.item) {
-          h += '<div class="wrow work"><k>' + c.tag + '</k><span>'
+          h += '<div class="wrow work"><k>' + c.call + '</k><span>'
             + FAB_PHASES[c.item.phaseIndex].name.toLowerCase() + ' · '
             + c.item.rec.label.toLowerCase() + '</span><em>'
             + (c.progress * 100).toFixed(0) + '%</em></div>';
         } else if (c.state === CELL_HOLD) {
-          h += '<div class="wrow hold"><k>' + c.tag + '</k><span>'
+          h += '<div class="wrow hold"><k>' + c.call + '</k><span>'
             + c.holdWhy.toLowerCase() + '</span><em>'
             + c.holdT.toFixed(0) + 's</em></div>';
         } else if (c.state === CELL_STARVED) quietStarved++;
@@ -21521,6 +21962,31 @@ const ledger = {
         + '<span>every discipline is drawing work</span></div>';
     }
     drawJLens(e.jlens);
+    this.gaps();
+  },
+
+  /**
+   * The integration table.
+   *
+   * Rebuilt from the probes rather than from a stored status, and only when the
+   * pass/fail signature actually changes — the probes are cheap but the innerHTML
+   * write is not, and a table that rewrites itself every frame is a table nobody
+   * can read a long line on.
+   */
+  gaps() {
+    const e = this.el;
+    const cov = Inspector.coverage();
+    const sig = cov.rows.map((r) => (r.ok ? "1" : "0") + r.note).join("|");
+    if (sig === this._gapSig) return;
+    this._gapSig = sig;
+    e.gapCov.textContent = cov.ok + " / " + cov.total + " connected";
+    let h = "";
+    for (const r of cov.rows) {
+      h += '<div class="grow ' + (r.ok ? "on" : "off") + '"><k>'
+        + (r.ok ? "✓" : "○") + '</k><span><b>' + r.name + '</b><i>'
+        + r.note + '</i><u>gap · ' + r.gap + '</u></span></div>';
+    }
+    e.gapList.innerHTML = h;
   },
 
   /** Lower-third and hero cards, drained from the pilot's event list. */
@@ -21921,6 +22387,7 @@ async function main() {
   const settlement = new Settlement(terrain, graph);
   onChange("showSettlement", (v) => settlement.setVisible(!!v));
   const crew = new CrewField(terrain, graph);
+  crewRef = crew;
   onChange("showCrew", (v) => {
     if (v && pilotRef && pilotRef.plan) { crew.setRealm(pilotRef.plan); }
     crew.setVisible(!!v);
@@ -21961,7 +22428,7 @@ async function main() {
   chrome.init();
   // `pilot` does not exist yet, so the hook is resolved lazily — the input
   // layer only ever knows there is *something* that wants telling.
-  let pilotRef = null;
+
   initInput(canvas, {
     onToggleOverlay: () => overlay.toggle(),
     onManual: () => { if (pilotRef) pilotRef.nudge(8); idleReset(); },
@@ -22267,6 +22734,15 @@ async function main() {
     // The one intervention the operator has over the steering field, and it does
     // whatever the current diagnosis prescribes rather than one fixed thing:
     // re-route a stall, ablate a loop, steer off a cascade, hold when nominal.
+    if (actions.export) {
+      // Not a command: reading the state cannot change it, and putting an export
+      // in the command log would be the log recording itself being read.
+      Inspector.copy().then((r) => {
+        ledger.el.gapFoot.textContent = r.ok
+          ? "exported " + r.bytes + " bytes to the clipboard"
+          : r.bytes + " bytes logged to the console (" + r.why + ")";
+      });
+    }
     if (actions.steer) {
       Audit.issue("steering.intervene",
         { pathology: Steering.pathology.id, action: Steering.pathology.action,
@@ -22455,7 +22931,8 @@ async function main() {
     Works, FAB_PHASES, FAB_STYLES, fabStyle, CELL_ROSTER, COUNCIL_SEATS,
     Steering, STEER_SYSTEMS, PATHOLOGIES, jacobiEigen, spectrum,
     Sim, Rng, worldChecksum, fnv1a, CANON, CANON_CELLS, CANON_BY_WORLD, validateCanon,
-    Audit, HOLD_BY_DISC, hazardClauses,
+    Audit, HOLD_BY_DISC, hazardClauses, Inspector, GAP_ROWS,
+    STOCK_CLASSES, DISC_STOCK, PHASE_DRAW,
     ObjectSculptSpec, NexusIterationSpec, planRealm,
     flora, BIOME_FLORA, ambient, BIOME_DRIFT, BIOME_FLIERS,
     settlement, BIOME_KIT, dressRealm, crew, DISC_COLOUR,
