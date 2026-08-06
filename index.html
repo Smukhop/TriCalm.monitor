@@ -26,7 +26,32 @@ html,body{margin:0;height:100%;background:#05080c;overflow:hidden;
 .bootwrap{width:min(560px,86vw);text-align:left}
 .logo{font-size:clamp(30px,7vw,54px);letter-spacing:.42em;font-weight:400;
   margin:0 0 2px -2px;color:#fff;text-shadow:0 0 42px rgba(95,216,255,.30)}
-.tag{color:var(--dim);font-size:11.5px;letter-spacing:.20em;text-transform:uppercase;margin-bottom:30px}
+.tag{color:var(--dim);font-size:11.5px;letter-spacing:.20em;text-transform:uppercase;margin-bottom:22px}
+
+/* The two cards. Everything the monitor is, in two pictures and eight words:
+   something writes to you, and you watch it work. The drawing is deliberately
+   hand-made rather than iconographic — a wobbly line reads as "a person made
+   this for you" where a clean glyph reads as "a system generated this", and the
+   first thing anyone should feel about an autonomous agent is the former. */
+.bcards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px}
+.bcard{border:1.5px solid rgba(196,220,240,.30);border-radius:3px;
+  padding:13px 13px 11px;background:rgba(11,19,28,.55);
+  /* Offset shadow, no blur: it reads as ink on paper rather than as glass. */
+  box-shadow:4px 4px 0 rgba(95,216,255,.13)}
+.bcard svg{display:block;width:100%;height:60px;overflow:visible}
+.bcard b{display:block;margin-top:9px;font-weight:400;font-size:10px;
+  letter-spacing:.22em;color:#fff;text-transform:uppercase}
+.bcard span{display:block;margin-top:2px;font-size:9.5px;letter-spacing:.05em;
+  color:var(--dim);line-height:1.45}
+.bink{fill:none;stroke:rgba(214,232,247,.86);stroke-width:2;stroke-linecap:round;
+  stroke-linejoin:round}
+.bink2{fill:none;stroke:rgba(95,216,255,.80);stroke-width:2;stroke-linecap:round;
+  stroke-linejoin:round}
+.bfill{fill:rgba(95,216,255,.13);stroke:none}
+/* One shared roughening filter, referenced by both drawings: two displacement
+   maps would give the two cards different handwriting. */
+.bwob{filter:url(#bwobble)}
+@media (max-width:620px){ .bcards{grid-template-columns:1fr} .bcard svg{height:52px} }
 .bar{height:1px;background:var(--line);position:relative;overflow:visible}
 .bar i{position:absolute;inset:0 auto 0 0;width:0%;background:linear-gradient(90deg,#2c7fa8,var(--cyan));
   box-shadow:0 0 14px rgba(95,216,255,.8);transition:width .32s cubic-bezier(.2,.7,.2,1)}
@@ -250,6 +275,31 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;background:v
 .lrow.part{color:rgba(255,189,106,.86)}
 .lrow.part k{color:#ff9b3d}
 
+/* J-Lens: the steering field, its spectrum, and who it says is derailed. */
+#jlens{width:100%;height:150px;display:block;border:1px solid rgba(95,216,255,.16);
+  background:rgba(6,13,22,.55)}
+.jrow{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:0 6px;
+  align-items:baseline;margin-top:3px;font-size:8px;letter-spacing:.18em}
+.jrow u{text-decoration:none;color:var(--dim);text-transform:uppercase}
+.jrow em{font-style:normal;color:rgba(196,220,240,.9);font-size:9px;
+  font-variant-numeric:tabular-nums;text-align:right}
+.jdiag{margin-top:5px;padding:3px 0 3px 7px;border-left:1px solid var(--cyan)}
+.jdiag b{display:block;font-weight:400;font-size:9.5px;letter-spacing:.20em;
+  color:#fff}
+.jdiag span{display:block;font-size:8.5px;letter-spacing:.04em;color:var(--dim);
+  margin-top:1px}
+.jdiag.warn{border-left-color:#ff9b3d}
+.jdiag.warn b{color:#ffbd6a}
+.jsus{display:grid;grid-template-columns:34px minmax(0,1fr);gap:0 6px;
+  align-items:baseline;font-size:8.5px;letter-spacing:.04em;padding:1px 0;
+  color:rgba(125,147,171,.66)}
+.jsus k{color:rgba(120,150,190,.55);font-size:8px}
+.jsus.s3{color:rgba(255,155,61,.86)}
+.jsus.s3 k{color:#ff9b3d}
+.jsus.s2{color:rgba(255,213,128,.74)}
+.jnote{margin-top:4px;font-size:7px;letter-spacing:.10em;
+  color:rgba(125,147,171,.36)}
+
 /* the active item gets the room it deserves */
 .lactive{border-left:1px solid var(--cyan);padding:2px 0 3px 8px;margin:2px 0 0 1px;
   box-shadow:-1px 0 14px rgba(95,216,255,.22)}
@@ -376,10 +426,10 @@ body.idle #view{cursor:none}
   <div class="vg"><u>BREATH</u><div class="vb br"><s id="barBreath"></s></div></div>
   <i id="vitalNote"></i>
 </div>
-<div id="hint">autonomy engaged &mdash; p stand down &middot; l ledger &middot; n skip item &middot; m skip realm &middot; water realms embark the Loki cutter automatically &middot; click to take the controls &middot; f1 overlay</div>
+<div id="hint">autonomy engaged &mdash; p stand down &middot; l ledger &middot; j steer &middot; n skip item &middot; m skip realm &middot; water realms embark the Loki cutter automatically &middot; click to take the controls &middot; f1 overlay</div>
 
 <div id="charter">
-  <div class="ch"><b id="chRealm">REALM I</b><i id="chIdx">CHARTER 1 / 9</i></div>
+  <div class="ch"><b id="chRealm">REALM I</b><i id="chIdx">CHARTER 1 / 11</i></div>
   <div class="seat" id="chSeat">SIROCCO STATION</div>
   <div class="cht" id="chNote">hold the dune sea · anchor the first grid</div>
   <div id="realmring"></div>
@@ -416,13 +466,27 @@ body.idle #view{cursor:none}
     <div id="listSeats"></div>
   </div>
 
+  <div class="lsec" id="secSteer">
+    <h4>J-LENS · STEERING <span id="steerEdges">0 pathways</span></h4>
+    <canvas id="jlens" width="330" height="150"></canvas>
+    <div class="jrow"><u>&#955;<sub>max</sub></u><em id="jDom">0.00</em>
+      <u>PARTICIPATION</u><em id="jPart">0.00</em></div>
+    <div class="jrow"><u>CIRCULATION</u><em id="jCirc">0%</em>
+      <u>TRACE</u><em id="jTrace">0.00</em></div>
+    <div class="jdiag" id="jDiag"><b id="jLabel">WARMING UP</b>
+      <span id="jWhy">&#8203;</span></div>
+    <div id="jSuspect"></div>
+    <div class="jnote">coupling over observable rig events &#183; not a model
+      Jacobian</div>
+  </div>
+
   <div class="grand">
     <u>MASSES RAISED</u><em id="tMass">0</em>
     <u>CAUSEWAY LAID</u><em id="tKm">0.00 km</em>
     <u>PHASES CLOSED</u><em id="tPhase">0</em>
     <u>HOLDS RAISED / CLEARED</u><em id="tHold">0 / 0</em>
     <u>RECOVERIES / SHORTFALLS</u><em id="tFail">0 / 0</em>
-    <u>REALMS COMMISSIONED</u><em id="tRealm">0 / 9</em>
+    <u>REALMS COMMISSIONED</u><em id="tRealm">0 / 11</em>
     <u>UPTIME</u><em id="tUp">00:00:00</em>
   </div>
 </div>
@@ -485,13 +549,56 @@ body.idle #view{cursor:none}
 <div id="boot">
   <div class="bootwrap">
     <h2 class="logo">LOKIFLOW</h2>
-    <div class="tag">Jaganaught LOQI &middot; autonomous planetary monitor &middot; v5 &middot; nine system worlds, traversed by terrain or vessel</div>
+    <div class="tag">Jaganaught LOQI &middot; autonomous planetary monitor &middot; eleven system worlds, traversed by terrain or vessel</div>
+
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+      <!-- Low-frequency turbulence at a small scale: it bends a straight line
+           without breaking it, which is what a hand does. -->
+      <filter id="bwobble" x="-14%" y="-14%" width="128%" height="128%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2"
+          seed="7" result="n"/>
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="2.1"
+          xChannelSelector="R" yChannelSelector="G"/>
+      </filter>
+    </defs></svg>
+
+    <div class="bcards">
+      <div class="bcard">
+        <svg viewBox="0 0 120 60" class="bwob" aria-hidden="true">
+          <!-- An envelope with its flap open and a line lifting out of it. -->
+          <path class="bfill" d="M14 16 h92 v34 h-92 z"/>
+          <path class="bink" d="M14 16 h92 v34 h-92 z"/>
+          <path class="bink" d="M14 16 L60 40 L106 16"/>
+          <path class="bink2" d="M60 40 C 60 30 74 26 78 14 M78 14 l-6 3 M78 14 l1 6"/>
+          <circle class="bink2" cx="99" cy="9" r="3.4"/>
+        </svg>
+        <b>it writes to you</b>
+        <span>The agent opens a charter, works it, and posts what it did. You do
+          not have to ask.</span>
+      </div>
+      <div class="bcard">
+        <svg viewBox="0 0 120 60" class="bwob" aria-hidden="true">
+          <!-- A monitor on a stand with a horizon and a sun inside it. -->
+          <path class="bfill" d="M10 8 h100 v36 h-100 z"/>
+          <path class="bink" d="M10 8 h100 v36 h-100 z"/>
+          <path class="bink" d="M52 44 v7 M68 44 v7 M40 51 h40"/>
+          <path class="bink2" d="M17 34 C 34 24 44 34 60 27 C 76 20 88 30 103 24"/>
+          <circle class="bink2" cx="84" cy="17" r="4.2"/>
+          <path class="bink2" d="M22 40 h76"/>
+        </svg>
+        <b>you watch it work</b>
+        <span>Eleven worlds, one ledger. Stand it down and take the controls
+          whenever you like.</span>
+      </div>
+    </div>
+
     <div class="bar"><i id="bootbar"></i></div>
     <div id="bootmsg"><b>booting</b></div>
     <div class="keys">
       <k>&nbsp;</k><span style="color:var(--jade)">The agent walks, sculpts and commissions on its own. Watch, or take over.</span>
       <k>P</k><span>stand the agent down / send it back to work</span>
       <k>L</k><span>hide the build ledger</span>
+      <k>J</k><span>apply what the J-Lens prescribes &mdash; re-route, ablate or steer</span>
       <k>N / M</k><span>skip the current item / commission the realm early</span>
       <k>CLICK</k><span>capture the pointer and take the controls</span>
       <k>W A S D</k><span>move, relative to camera &middot; arrows also &middot; SHIFT sprint</span>
@@ -1583,12 +1690,15 @@ const BINDINGS = {
   ledger: ["KeyL"],
   skipTask: ["KeyN"],
   skipRealm: ["KeyM"],
+  /** Apply whatever the J-Lens currently prescribes. */
+  steer: ["KeyJ"],
 };
 const SPELL_KEYS = { Digit1: 1, Digit2: 2, Digit3: 3, Digit4: 4, Digit5: 5 };
 /** Edge-triggered actions, consumed once per frame by the run loop. */
 const actions = { biome: 0, suitMode: false, outfitCycle: false, beam: false,
   chrome: false, surge: false,
-  autonomy: false, ledger: false, skipTask: false, skipRealm: false };
+  autonomy: false, ledger: false, skipTask: false, skipRealm: false,
+  steer: false };
 
 const keys = Object.create(null);
 const BASE_LOOK = 0.0022;
@@ -1666,6 +1776,7 @@ function initInput(canvas, hooks) {
     else if (act === "ledger") actions.ledger = true;
     else if (act === "skipTask") actions.skipTask = true;
     else if (act === "skipRealm") actions.skipRealm = true;
+    else if (act === "steer") actions.steer = true;
     else if (act === "sprint" && S.sprintToggle) latch.sprint = !latch.sprint;
     else if (act === "surfKey") { if (S.surfToggle) latch.surf = !latch.surf; else latch.surf = true; }
   });
@@ -1795,7 +1906,7 @@ function endInputFrame() {
   actions.beam = false;
   actions.chrome = false; actions.surge = false;
   actions.autonomy = false; actions.ledger = false;
-  actions.skipTask = false; actions.skipRealm = false;
+  actions.skipTask = false; actions.skipRealm = false; actions.steer = false;
 }
 
 /* =========================================================================
@@ -17773,6 +17884,7 @@ const Works = {
   init(ctx) {
     this.ctx = ctx;
     this.style = fabStyle(Biome.key);
+    Steering.init();
     this.cells = CELL_ROSTER.map((r, i) => ({
       ...r, index: i, state: CELL_IDLE, item: null, progress: 0,
       done: 0, holdT: 0, holdWhy: "", idleT: 0,
@@ -17792,6 +17904,12 @@ const Works = {
     // The style is resolved once per realm, not per phase: it is a property of the
     // ground, and the ground does not change while a charter is open.
     this.style = fabStyle(plan.realm.biome);
+    // A charter opening is the largest single hand-off on the rig: the realm hands
+    // the pilot a programme and the ledger a heading, and everything downstream of
+    // that is a consequence. The steering field should show it as one.
+    Steering.drive("realm", "pilot", 4.0);
+    Steering.drive("realm", "ledger", 2.4);
+    Steering.couple("pilot", "forming", 1.6);
     this.queue.length = 0;
     this.records.length = 0;
     for (const c of this.cells) {
@@ -17822,6 +17940,12 @@ const Works = {
    * anything.
    */
   commitMass(spec, mass) {
+    // The avatars finished forming and raising something; the cells now own its
+    // eleven phases. That is a genuine hand-off and the one the whole simulation
+    // turns on, so it is weighted accordingly.
+    Steering.drive("forming", "masses", 2.2);
+    Steering.couple("masses", "cells", 2.8);
+    Steering.drive("masses", "ledger", 1.2);
     if (!spec || spec.isPad) return null;
     // Bigger masses are more work. Scaled off the same footprint and height the
     // pilot uses to decide how long to stand there sculpting, so the two agree.
@@ -17873,6 +17997,10 @@ const Works = {
   update(dt, buildRate) {
     if (!this.realm) return;
     const rate = buildRate === undefined ? 1 : buildRate;
+    // The steering field advances with the works, because the works are what it is
+    // a field over. Solving it here rather than in the frame loop keeps the two
+    // from ever disagreeing about which realm's board is being diagnosed.
+    Steering.update(dt);
     // On a monitored world the avatars are the workforce, so fabrication advances
     // with the pilot's own build rate and no cell ever appears on station.
     if (!this.inhabited) {
@@ -17891,6 +18019,10 @@ const Works = {
         if (c.holdT <= 0) {
           c.state = CELL_IDLE; c.item = null; c.holdWhy = "";
           this.tally.holdsCleared++;
+          // The return leg. This is what turns an escalation from circulation into
+          // mutual coupling, and it is why clearing holds moves the diagnosis.
+          Steering.drive("council", "cells", 3.2);
+          Steering.drive("council", "ledger", 1.0);
         }
         continue;
       }
@@ -17919,6 +18051,10 @@ const Works = {
         c.willHold = false;
         item.claimed = false;
         this.tally.holdsRaised++;
+        // An escalation is one-way until it is cleared, and one-way traffic is
+        // exactly what the skew part of the field measures — so a realm drowning
+        // in unreviewed holds will read as CIRCULAR rather than as busy.
+        Steering.drive("cells", "council", 3.2);
         this.emit("works-hold", c.tag + " HOLD",
           item.rec.label + " · " + ph.name + " · " + c.holdWhy);
         c.item = null;
@@ -17963,6 +18099,11 @@ const Works = {
     item.progress = clamp01(item.progress + (w <= 0.001 ? 1 : delta / w));
 
     if (ph.forms && this.ctx && this.ctx.terrain && item.progress > before) {
+      // Ground actually moved. This is the only place FORMING earns coupling, so
+      // a world whose style zeroes both groundworks phases reads as a board with
+      // no forming axis on it — which is exactly true of a floating ice plate.
+      Steering.drive(cell ? "cells" : "pilot", "forming",
+        (item.progress - before) * 9);
       const d = this.ctx.terrain.deform;
       const spec = rec.spec;
       const step = item.progress - before;
@@ -17983,6 +18124,8 @@ const Works = {
 
     if (item.progress >= 1) {
       this.tally.phasesDone++;
+      Steering.drive(cell ? "cells" : "pilot", "ledger", 1.4);
+      Steering.drive("ledger", "council", 0.7);
       if (rec.phase <= item.phaseIndex) rec.phase = item.phaseIndex + 1;
       const at = this.queue.indexOf(item);
       if (at >= 0) this.queue.splice(at, 1);
@@ -18053,6 +18196,637 @@ const Works = {
 };
 
 /** What a cell runs into. Engineering holds, because that is what these are. */
+/* =========================================================================
+ * THE STEERING FRAMEWORK
+ *
+ *   Framework  ->  Model Engines  ->  Transmission  ->  Axles
+ *
+ * The monitor can already tell you what every cell is doing. What it could not
+ * tell you is whether the *delegation* is working — whether work is flowing
+ * between the subsystems that raise a realm, or piling up in one of them, or
+ * going round a loop and never closing. That is a different question from "is
+ * anyone busy", and busy is exactly what a stalled board looks like from inside.
+ *
+ * So: an 8x8 coupling field over the eight things on this rig that hand work to
+ * each other, built from events that actually happened rather than from a
+ * plausible-looking function of the frame counter.
+ *
+ *   A[i][j] = how much system i has been driving system j lately
+ *
+ * Every entry is a decayed count. That is what makes the spectrum a measurement:
+ *
+ *   the dominant eigenvalue of the symmetric part   how much coupled energy the
+ *                                                   board is carrying
+ *   its participation ratio                         how many systems are sharing
+ *                                                   that energy
+ *   the norm of the skew part                       how much of the traffic is
+ *                                                   one-way circulation rather
+ *                                                   than mutual work
+ *
+ * Those three separate a healthy board from a stalled one, from a loop, and from
+ * a cascade — and each has a different intervention, which is the whole point of
+ * measuring instead of guessing.
+ *
+ * The honest caveat, stated here and in the panel: this is a coupling field over
+ * OBSERVABLE events on this rig. It is not the Jacobian of any model's hidden
+ * state and nothing here claims to read one. What makes it useful is that the
+ * eight axes are the eight things that can actually starve each other.
+ * ========================================================================= */
+
+/**
+ * The eight axles. Each one is a subsystem that both produces and consumes work,
+ * and each one already emits something this file can count — which is the
+ * criterion for being on the list. A ninth axis nothing drives would read as
+ * permanently stuck and would be measuring the instrument, not the rig.
+ */
+const STEER_SYSTEMS = [
+  { id: "realm", name: "REALM", measure: "charters opened, terraforms committed" },
+  { id: "pilot", name: "PILOT", measure: "items the avatars take up and close" },
+  { id: "forming", name: "FORMING", measure: "brushes written into the ground" },
+  { id: "masses", name: "MASSES", measure: "structures founded and topped out" },
+  { id: "cells", name: "CELLS", measure: "phases the resident cells draw down" },
+  { id: "council", name: "COUNCIL", measure: "seats sitting, holds raised and cleared" },
+  { id: "conduit", name: "CONDUIT", measure: "causeway laid between districts" },
+  { id: "ledger", name: "LEDGER", measure: "entries written and read back" },
+];
+const STEER_N = STEER_SYSTEMS.length;
+const STEER_IDX = {};
+for (let i = 0; i < STEER_N; i++) STEER_IDX[STEER_SYSTEMS[i].id] = i;
+
+/**
+ * What can go wrong with delegation, how to see it in the spectrum, and what to
+ * do about it. The thresholds are on quantities `spectrum()` returns, so a
+ * diagnosis is a measurement rather than a mood.
+ *
+ * Order matters: the first test that passes wins, and `warming` is first for a
+ * reason given at its own comment.
+ */
+const PATHOLOGIES = [
+  {
+    id: "warming", label: "WARMING UP", tone: "ok",
+    // A board that has barely had an event on it reads as pure one-way
+    // circulation. That is technically true and completely useless, because one
+    // hand-off with nothing to close against IS a loop. Diagnosing before there
+    // is anything to diagnose is how an instrument loses its credibility on the
+    // first frame anyone sees it.
+    test: (s) => s.edges !== undefined && s.edges < 9,
+    why: "Too few active pathways to read a spectrum yet. Give the realm a minute.",
+    fix: "HOLD COURSE", action: "hold",
+  },
+  {
+    id: "stuck", label: "STUCK", tone: "warn",
+    // Coupling has collapsed: there is work on the books and nothing is drawing
+    // it anywhere.
+    test: (s) => s.dominant < 0.55,
+    why: "Coupling has collapsed. Work is on the books and nothing is drawing it.",
+    fix: "ROUTE THROUGH COUNCIL", action: "reroute",
+  },
+  {
+    id: "circular", label: "CIRCULAR HAND-OFF", tone: "warn",
+    test: (s) => s.circulation > 0.46,
+    why: "Charters are going round a loop. Everyone hands on, nobody closes.",
+    fix: "ABLATE THE LOOP", action: "ablate",
+  },
+  {
+    id: "cascade", label: "RUNAWAY CASCADE", tone: "warn",
+    // The edge count is load-bearing here and it was learned the hard way. A realm
+    // seventy seconds old genuinely has a narrow board: the council has not sat and
+    // no causeway is laid, so masses and cells carry everything and the
+    // participation ratio is honestly about 2.4 out of 8. That is a YOUNG board,
+    // not a cascading one, and diagnosing it as a cascade sends an operator to
+    // steer off the only pathway that is working. A real cascade has plenty of
+    // pathways available and is ignoring them.
+    test: (s) => s.edges >= 14 && s.dominant > 3.1 && s.participation < 3.4,
+    why: "One pathway is driving the board. The rest of the works are passengers.",
+    fix: "STEER OFF THE DRIVER", action: "steer",
+  },
+  {
+    id: "healthy", label: "NOMINAL", tone: "ok",
+    test: () => true,
+    why: "Energy is spread across the works and closing. Delegation is holding.",
+    fix: "HOLD COURSE", action: "hold",
+  },
+];
+
+/**
+ * Symmetric eigendecomposition by cyclic Jacobi rotations.
+ *
+ * Jacobi rather than QR because the matrix is 8x8 and symmetric, this runs a few
+ * times a second rather than per frame, and Jacobi is about twenty lines with no
+ * tridiagonalisation step to get wrong. It converges quadratically once the
+ * off-diagonal is small, so twelve sweeps is far more than a matrix this size
+ * ever needs.
+ *
+ * @param {Float64Array} A row-major n*n, symmetric. Not modified.
+ * @returns {{values: Float64Array, vectors: Float64Array[]}} descending by value
+ */
+function jacobiEigen(A, n, sweeps) {
+  // Work on a copy: the caller's matrix is live state.
+  const a = new Float64Array(n * n);
+  for (let i = 0; i < n * n; i++) a[i] = A[i];
+  const v = new Float64Array(n * n);
+  for (let i = 0; i < n; i++) v[i * n + i] = 1;
+
+  const S = sweeps === undefined ? 12 : sweeps;
+  for (let sweep = 0; sweep < S; sweep++) {
+    // Sum of squares off the diagonal. Jacobi drives this to zero.
+    let off = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) off += a[i * n + j] * a[i * n + j];
+    }
+    if (off < 1e-18) break;
+
+    for (let p = 0; p < n - 1; p++) {
+      for (let q = p + 1; q < n; q++) {
+        const apq = a[p * n + q];
+        if (Math.abs(apq) < 1e-15) continue;
+        const app = a[p * n + p], aqq = a[q * n + q];
+        // The rotation that zeroes (p,q). Solving for the tangent rather than the
+        // angle avoids the catastrophic cancellation a naive atan2 hits when app
+        // is close to aqq — which on a near-uniform coupling field is the common
+        // case, not the edge case.
+        const theta = (aqq - app) / (2 * apq);
+        const t = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+        const c = 1 / Math.sqrt(t * t + 1);
+        const s = t * c;
+        for (let k = 0; k < n; k++) {
+          const akp = a[k * n + p], akq = a[k * n + q];
+          a[k * n + p] = c * akp - s * akq;
+          a[k * n + q] = s * akp + c * akq;
+        }
+        for (let k = 0; k < n; k++) {
+          const apk = a[p * n + k], aqk = a[q * n + k];
+          a[p * n + k] = c * apk - s * aqk;
+          a[q * n + k] = s * apk + c * aqk;
+        }
+        for (let k = 0; k < n; k++) {
+          const vkp = v[k * n + p], vkq = v[k * n + q];
+          v[k * n + p] = c * vkp - s * vkq;
+          v[k * n + q] = s * vkp + c * vkq;
+        }
+      }
+    }
+  }
+
+  const order = [];
+  for (let i = 0; i < n; i++) order.push({ val: a[i * n + i], idx: i });
+  order.sort((x, y) => y.val - x.val);
+  const values = new Float64Array(n);
+  const vectors = [];
+  for (let k = 0; k < n; k++) {
+    values[k] = order[k].val;
+    const col = new Float64Array(n);
+    for (let i = 0; i < n; i++) col[i] = v[i * n + order[k].idx];
+    // The sign of an eigenvector is arbitrary out of Jacobi. Fix it so the
+    // largest component is positive, or the reported driving system flips
+    // between frames and the panel reads as noise.
+    let big = 0, bigI = 0;
+    for (let i = 0; i < n; i++) {
+      if (Math.abs(col[i]) > big) { big = Math.abs(col[i]); bigI = i; }
+    }
+    if (col[bigI] < 0) for (let i = 0; i < n; i++) col[i] = -col[i];
+    vectors.push(col);
+  }
+  return { values, vectors };
+}
+
+/**
+ * The full spectral read of a coupling field.
+ *
+ * A coupling matrix is not symmetric — A driving B is a different quantity from B
+ * driving A, and that asymmetry is the interesting part. So it splits:
+ *
+ *   (A + Aᵀ)/2   mutual coupling. Symmetric, so it has real eigenvalues, and its
+ *                dominant one is how much coupled energy the board carries.
+ *   (A - Aᵀ)/2   circulation. Pure one-way flow, which carries no mutual work
+ *                at all — its norm relative to the whole is how much of the
+ *                traffic is going round rather than closing.
+ *
+ * Reporting only the symmetric spectrum would call a perfect loop healthy, and
+ * reporting only the norm would call a stall and a cascade the same thing.
+ */
+function spectrum(A, n) {
+  const sym = new Float64Array(n * n);
+  let skewNorm = 0, symNorm = 0;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const aij = A[i * n + j], aji = A[j * n + i];
+      const s = (aij + aji) * 0.5;
+      const k = (aij - aji) * 0.5;
+      sym[i * n + j] = s;
+      symNorm += s * s;
+      skewNorm += k * k;
+    }
+  }
+  const { values, vectors } = jacobiEigen(sym, n);
+  const dominant = values[0];
+  const smallest = values[n - 1];
+  let trace = 0;
+  for (let i = 0; i < n; i++) trace += values[i];
+  // Participation ratio of the dominant mode: 1 means one system carries the
+  // whole thing (a cascade), n means it is spread evenly (a healthy board).
+  const vec = vectors[0];
+  let s2 = 0, s4 = 0;
+  for (let i = 0; i < n; i++) { const w = vec[i] * vec[i]; s2 += w; s4 += w * w; }
+  const participation = s4 > 1e-12 ? (s2 * s2) / s4 : n;
+  return {
+    values, vectors, dominant, smallest, trace,
+    spectralRadius: Math.max(Math.abs(dominant), Math.abs(smallest)),
+    participation,
+    circulation: symNorm + skewNorm > 1e-12
+      ? Math.sqrt(skewNorm / (symNorm + skewNorm)) : 0,
+  };
+}
+
+/**
+ * Coupling decays with a half-life. Without it the matrix is a lifetime total and
+ * every board eventually looks identical; with it the spectrum reflects the last
+ * half-minute of work, which is the timescale a steering decision acts on.
+ */
+const STEER_HALF_LIFE = 26;
+
+const Steering = {
+  /** Raw accumulated coupling. Row = driver, column = driven. */
+  A: new Float64Array(STEER_N * STEER_N),
+  /** The normalised field the spectrum is taken of. */
+  field: new Float64Array(STEER_N * STEER_N),
+  spectrum: null,
+  pathology: PATHOLOGIES[PATHOLOGIES.length - 1],
+  /** Which pathway the operator has picked out, or -1. */
+  selected: -1,
+  /** Ablation dampens the selected pathway only. */
+  ablation: 0,
+  history: [],
+  /** Interventions taken, newest last, for the panel. */
+  log: [],
+  _t: 0,
+  _sinceSolve: 1e9,
+
+  init() {
+    this.A.fill(0);
+    this.field.fill(0);
+    this.history.length = 0;
+    this.log.length = 0;
+    this.selected = -1;
+    this.ablation = 0;
+    this._t = 0;
+    this._sinceSolve = 1e9;
+    // Seed the diagonal. Every system has some self-influence — its own inertia
+    // and internal feedback — and a matrix whose diagonal starts at zero claims a
+    // system has no effect on itself, which is never true and makes the first few
+    // seconds of spectrum meaningless.
+    for (let i = 0; i < STEER_N; i++) this.A[i * STEER_N + i] = 0.25;
+  },
+
+  /**
+   * Record that something happened: `from` drove `to`.
+   *
+   * This is the only way coupling enters the matrix, and that is the design. A
+   * subsystem that never calls this reads as uncoupled — which is correct rather
+   * than a gap, because a part of the works nobody hands anything to IS stuck.
+   */
+  drive(from, to, weight) {
+    const i = STEER_IDX[from], j = STEER_IDX[to];
+    if (i === undefined || j === undefined) return;
+    const w = weight === undefined ? 1 : weight;
+    this.A[i * STEER_N + j] += w;
+    // Self-coupling too: doing work at all keeps a system warm.
+    this.A[i * STEER_N + i] += w * 0.30;
+  },
+
+  /** A mutual exchange, which most real hand-offs are. */
+  couple(a, b, weight) {
+    const w = weight === undefined ? 1 : weight;
+    this.drive(a, b, w);
+    this.drive(b, a, w * 0.72);
+  },
+
+  /**
+   * Fold the works' own standing state in.
+   *
+   * The cells are the largest continuous signal on the rig, and it would be
+   * strange for the cells axis to be driven only by discrete completions when
+   * every cell already publishes what it is doing every frame. A cell on hold
+   * couples to the council; a starved cell couples to nothing, which is exactly
+   * why a wall of starvation reads as STUCK rather than as busy.
+   */
+  sampleWorks(dt) {
+    const cells = Works.cells;
+    if (!cells || !cells.length) return;
+    let working = 0, hold = 0, starved = 0;
+    for (const c of cells) {
+      if (c.state === CELL_WORKING) working++;
+      else if (c.state === CELL_HOLD) hold++;
+      else if (c.state === CELL_STARVED) starved++;
+    }
+    const n = cells.length;
+    this.drive("masses", "cells", (working / n) * dt * 2.2);
+    this.drive("cells", "ledger", (working / n) * dt * 1.8);
+    this.drive("cells", "council", (hold / n) * dt * 2.4);
+    this.drive("council", "cells", (hold / n) * dt * 1.1);
+    // Starvation consumes the pilot's attention and produces nothing.
+    this.drive("pilot", "cells", (starved / n) * dt * 0.6);
+    if (Works.realm && !Works.inhabited) {
+      // On a monitored world the avatars carry the fabrication themselves, so the
+      // traffic runs pilot -> forming -> masses with no cells in the middle. The
+      // spectrum should show that as a narrower board, because it is one.
+      this.drive("pilot", "forming", dt * 1.4);
+      this.drive("forming", "masses", dt * 1.2);
+    }
+  },
+
+  update(dt) {
+    this._t += dt;
+    // Exponential decay toward the diagonal floor.
+    const k = Math.pow(0.5, dt / STEER_HALF_LIFE);
+    for (let i = 0; i < STEER_N; i++) {
+      for (let j = 0; j < STEER_N; j++) {
+        const at = i * STEER_N + j;
+        this.A[at] *= k;
+        if (i === j && this.A[at] < 0.25) this.A[at] = 0.25;
+      }
+    }
+    this.sampleWorks(dt);
+
+    // The spectrum is solved a few times a second, not every frame. Twelve Jacobi
+    // sweeps on an 8x8 is cheap but it is not free, and coupling decays with a
+    // twenty-six second half-life — resolving it at 60 Hz would be measuring the
+    // same matrix sixty times.
+    this._sinceSolve += dt;
+    if (this._sinceSolve < 0.25) return this.spectrum;
+    this._sinceSolve = 0;
+
+    // Normalise into the field the spectrum reads. Scaling by the mean keeps the
+    // eigenvalues comparable whatever the absolute event rate is, so the pathology
+    // thresholds mean the same thing on a quiet realm and a busy one — it is the
+    // SHAPE of the coupling that diagnoses, not the volume.
+    let sum = 0;
+    for (let i = 0; i < STEER_N * STEER_N; i++) sum += this.A[i];
+    const scale = sum > 1e-6 ? (STEER_N * STEER_N * 0.5) / sum : 1;
+    for (let i = 0; i < STEER_N; i++) {
+      for (let j = 0; j < STEER_N; j++) {
+        let v = this.A[i * STEER_N + j] * scale;
+        // Ablation dampens the selected row and column and nothing else. It is the
+        // operator asking what a pathway is actually contributing.
+        if (this.ablation > 0 && this.selected >= 0
+          && (i === this.selected || j === this.selected)) {
+          v *= 1 - this.ablation;
+        }
+        this.field[i * STEER_N + j] = v;
+      }
+    }
+
+    const sp = spectrum(this.field, STEER_N);
+    // Distinct active edges, above the diagonal floor the seed puts in. The
+    // pathologies need this to avoid diagnosing an empty board: ten units of
+    // traffic on two edges is still one hand-off going nowhere, and its spectrum
+    // is indistinguishable from a pathological loop — so the gate counts breadth,
+    // not throughput.
+    let edges = 0;
+    for (let i = 0; i < STEER_N; i++) {
+      for (let j = 0; j < STEER_N; j++) {
+        if (i !== j && this.A[i * STEER_N + j] > 0.12) edges++;
+      }
+    }
+    sp.edges = edges;
+    this.spectrum = sp;
+    for (const p of PATHOLOGIES) {
+      if (p.test(sp)) { this.pathology = p; break; }
+    }
+    if (this.history.length === 0
+      || this._t - this.history[this.history.length - 1].t > 0.5) {
+      this.history.push({ t: this._t, d: sp.dominant, c: sp.circulation });
+      if (this.history.length > 96) this.history.shift();
+    }
+    return sp;
+  },
+
+  /** The system carrying most of the dominant mode — who is driving. */
+  get driver() {
+    if (!this.spectrum) return STEER_SYSTEMS[0];
+    const v = this.spectrum.vectors[0];
+    let big = -1, bi = 0;
+    for (let i = 0; i < STEER_N; i++) {
+      const w = Math.abs(v[i]);
+      if (w > big) { big = w; bi = i; }
+    }
+    return STEER_SYSTEMS[bi];
+  },
+
+  /** The system carrying least — the one most likely to be starving. */
+  get quietest() {
+    if (!this.spectrum) return STEER_SYSTEMS[0];
+    const v = this.spectrum.vectors[0];
+    let small = Infinity, si = 0;
+    for (let i = 0; i < STEER_N; i++) {
+      const w = Math.abs(v[i]);
+      if (w < small) { small = w; si = i; }
+    }
+    return STEER_SYSTEMS[si];
+  },
+
+  /**
+   * Which cells look derailed, and why.
+   *
+   * The spectrum diagnoses the BOARD; this attributes it to individuals, and it
+   * is the part an operator can act on. A cell is suspect when the discipline it
+   * draws from is starved on the loaded world AND it has not changed state —
+   * both conditions, because either alone is normal. A starved discipline with a
+   * working cell is a quiet shift. A stalled cell in a busy discipline is one
+   * about to pick something up.
+   *
+   * The severity-3 case is the interesting one, and it is a fact about the
+   * planet rather than a fault: FLOE weights `found` at half and KOVIR weights it
+   * at 0.7, so on a world whose style zeroes a phase outright the cells that own
+   * it genuinely have nothing to draw, forever, and the monitor should say so
+   * rather than showing them idle and letting an operator wait.
+   */
+  suspects() {
+    const out = [];
+    const style = Works.style;
+    if (!style || !Works.cells.length) return out;
+    // How much of this world's fabrication belongs to each discipline.
+    const load = {};
+    let total = 0;
+    for (const ph of FAB_PHASES) {
+      const w = style.norm[ph.id] === undefined ? 1 : style.norm[ph.id];
+      const eff = ph.share * w;
+      load[ph.disc] = (load[ph.disc] || 0) + eff;
+      total += eff;
+    }
+    const world = Works.realm ? Works.realm.seat : "this world";
+    for (const c of Works.cells) {
+      const share = total > 0 ? (load[c.disc] || 0) / total : 0;
+      if (share < 0.015) {
+        out.push({ cell: c, sev: 3, share,
+          why: "no " + c.disc + " work exists here — " + style.label.toLowerCase() });
+      } else if (c.state === CELL_HOLD) {
+        out.push({ cell: c, sev: 2, share, why: "held · " + c.holdWhy });
+      } else if (c.state === CELL_STARVED && c.idleT > 6) {
+        out.push({ cell: c, sev: 2, share,
+          why: "starved " + c.idleT.toFixed(0) + "s behind a phase it does not own" });
+      } else if (c.state === CELL_IDLE && c.idleT > 20 && share > 0.08) {
+        out.push({ cell: c, sev: 1, share, why: "idle while its discipline has work" });
+      }
+    }
+    out.sort((x, y) => y.sev - x.sev || y.share - x.share);
+    this._world = world;
+    return out.slice(0, 6);
+  },
+
+  /* --------------------------------------------------------- interventions */
+
+  /**
+   * Re-route: inject coupling from the realm into the quietest pathway. This is
+   * the fix for a stalled board, and it is not a cheat — the council exists
+   * precisely to hand work to something that is not drawing any, so the
+   * intervention is the thing the org chart already says should happen.
+   */
+  reroute() {
+    const q = this.quietest.id;
+    this.drive("council", q, 6);
+    this.drive(q, "ledger", 4);
+    this.couple("pilot", q, 3);
+    return "routed through " + q.toUpperCase();
+  },
+
+  /** Ablate the selected pathway, or the driver if nothing is selected. */
+  ablate() {
+    if (this.selected < 0) this.selected = STEER_SYSTEMS.indexOf(this.driver);
+    this.ablation = this.ablation > 0 ? 0 : 0.7;
+    return this.ablation > 0
+      ? "ablated " + STEER_SYSTEMS[this.selected].id.toUpperCase()
+      : "ablation released";
+  },
+
+  /**
+   * Steer: redistribute without adding energy. Take a little from the driver's
+   * self-loop and give it to everyone else. This is the honest intervention for a
+   * cascade — the board already has enough energy, it is in the wrong place.
+   */
+  steer() {
+    const d = STEER_SYSTEMS.indexOf(this.driver);
+    const take = this.A[d * STEER_N + d] * 0.35;
+    this.A[d * STEER_N + d] -= take;
+    for (let j = 0; j < STEER_N; j++) {
+      if (j === d) continue;
+      this.A[d * STEER_N + j] += take / (STEER_N - 1);
+    }
+    return "steered off " + STEER_SYSTEMS[d].id.toUpperCase();
+  },
+
+  /** Apply whatever the current pathology prescribes. */
+  intervene() {
+    const act = this.pathology.action;
+    let msg;
+    if (act === "reroute") msg = this.reroute();
+    else if (act === "ablate") msg = this.ablate();
+    else if (act === "steer") msg = this.steer();
+    else msg = "holding course";
+    this.log.push({ t: this._t, msg, from: this.pathology.id });
+    if (this.log.length > 8) this.log.shift();
+    return msg;
+  },
+
+  select(i) { this.selected = this.selected === i ? -1 : i; },
+};
+
+/* ------------------------------------------------------------------ drawing */
+
+/**
+ * The J-Lens.
+ *
+ * Two things in one figure. The grid is the coupling field: row i, column j is how
+ * much system i has been driving system j, cool for weak and warm for strong, so a
+ * hot row is a system that is driving everything and a hot column is one that
+ * everything is driving. The bar along the bottom is the dominant eigenvector —
+ * how the leading mode distributes across the eight axes, which is the part you
+ * can act on. A tall single bar is a cascade; eight even bars is a healthy board.
+ *
+ * The sparkline behind the bar is the dominant eigenvalue over the last minute, so
+ * a diagnosis can be read as a trend rather than as a snapshot: a board recovering
+ * from a stall and a board sliding into one look identical at one instant.
+ */
+function drawJLens(canvas) {
+  const st = Steering;
+  const ctx = canvas.getContext("2d");
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = canvas.clientWidth || 330, h = 150;
+  if (canvas.width !== Math.round(w * dpr)) {
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  if (!st.spectrum) return;
+
+  const pad = 5, barH = 30, labelH = 9;
+  const gridH = h - barH - labelH - pad * 2;
+  const cell = Math.min((w - pad * 2 - 26) / STEER_N, gridH / STEER_N);
+  const ox = pad + 26;
+  const oy = pad;
+
+  let max = 1e-6;
+  for (let i = 0; i < STEER_N * STEER_N; i++) max = Math.max(max, st.field[i]);
+  for (let i = 0; i < STEER_N; i++) {
+    for (let j = 0; j < STEER_N; j++) {
+      const v = st.field[i * STEER_N + j] / max;
+      const hue = 200 - v * 168;
+      ctx.fillStyle = "hsla(" + hue.toFixed(0) + ",86%,"
+        + (22 + v * 40).toFixed(0) + "%," + (0.28 + v * 0.66).toFixed(3) + ")";
+      ctx.fillRect(ox + j * cell + 0.6, oy + i * cell + 0.6, cell - 1.2, cell - 1.2);
+    }
+  }
+  // Row labels: without them the grid is a pretty texture and you cannot tell
+  // which axis is hot, which is the only question it exists to answer.
+  ctx.font = "6px ui-monospace,monospace";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i < STEER_N; i++) {
+    ctx.fillStyle = i === st.selected ? "rgba(255,210,122,.9)" : "rgba(142,166,189,.55)";
+    ctx.fillText(STEER_SYSTEMS[i].id.toUpperCase().slice(0, 7), 1,
+      oy + i * cell + cell * 0.5);
+  }
+  if (st.selected >= 0) {
+    ctx.strokeStyle = "rgba(255,210,122,.62)";
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(ox + st.selected * cell, oy, cell, cell * STEER_N);
+    ctx.strokeRect(ox, oy + st.selected * cell, cell * STEER_N, cell);
+  }
+
+  const by = oy + cell * STEER_N + 7;
+  const bw = cell * STEER_N;
+  ctx.fillStyle = "rgba(140,185,225,.12)";
+  ctx.fillRect(ox, by, bw, barH);
+
+  // The trend of the dominant eigenvalue, drawn behind the mode bars.
+  if (st.history.length > 2) {
+    let hi = 0.8;
+    for (const p of st.history) hi = Math.max(hi, p.d);
+    ctx.beginPath();
+    for (let i = 0; i < st.history.length; i++) {
+      const x = ox + (i / (st.history.length - 1)) * bw;
+      const y = by + barH - (st.history[i].d / hi) * barH;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = "rgba(111,227,176,.42)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  const v0 = st.spectrum.vectors[0];
+  for (let i = 0; i < STEER_N; i++) {
+    const m = Math.abs(v0[i]);
+    const bh = barH * m;
+    ctx.fillStyle = i === st.selected ? "rgba(255,210,122,.92)"
+      : "rgba(95,216,255,.72)";
+    ctx.fillRect(ox + i * cell + cell * 0.20, by + barH - bh, cell * 0.60, bh);
+  }
+  ctx.fillStyle = "rgba(142,166,189,.6)";
+  ctx.font = "6.5px ui-monospace,monospace";
+  ctx.textBaseline = "top";
+  ctx.fillText("DOMINANT MODE · DRIVEN BY " + st.driver.id.toUpperCase()
+    + " · QUIETEST " + st.quietest.id.toUpperCase(), ox, by + barH + 2);
+}
+
 const HOLD_REASONS = [
   "AWAITING VENDOR DATA",
   "WELD PROCEDURE NOT QUALIFIED",
@@ -18229,6 +19003,11 @@ class Pilot {
       const b = this.plan.districts[pair[1] % this.plan.districts.length];
       const link = c.conduits.lay(a.x, a.z, b.x, b.z, c.terrain, BIOMES[this.plan.realm.biome].accent);
       if (!link) continue;
+      // A causeway is the one thing on the rig that couples two districts to each
+      // other rather than to the centre, so it is the axis that most directly
+      // raises the participation ratio — laying road is how a cascade gets spread.
+      Steering.couple("masses", "conduit", 1.6);
+      Steering.drive("conduit", "pilot", 1.1);
       q.push({ k: ST_TRAVEL, x: a.x, z: a.z, weight: 1.0, sub: "moving to the causeway head" });
       q.push({ k: ST_PAVE, link, weight: 2.2, sub: "paving " + Math.round(link.length) + " m of causeway" });
     }
@@ -18790,6 +19569,10 @@ const ledger = {
       cells: g("listCells"), cCells: g("cntCells"),
       fabLabel: g("fabLabel"), fabPct: g("fabPct"), fabBar: g("fabBar"),
       seats: g("listSeats"), cSeats: g("cntSeats"), secCouncil: g("secCouncil"),
+      secSteer: g("secSteer"), jlens: g("jlens"), jEdges: g("steerEdges"),
+      jDom: g("jDom"), jPart: g("jPart"), jCirc: g("jCirc"), jTrace: g("jTrace"),
+      jDiag: g("jDiag"), jLabel: g("jLabel"), jWhy: g("jWhy"),
+      jSuspect: g("jSuspect"),
       tMass: g("tMass"), tKm: g("tKm"), tRealm: g("tRealm"), tUp: g("tUp"),
       tPhase: g("tPhase"), tHold: g("tHold"), tFail: g("tFail"),
       badge: g("autob"), badgeState: g("autoState"),
@@ -18802,6 +19585,16 @@ const ledger = {
     for (let i = 0; i < REALMS.length; i++) r += "<s></s>";
     this.el.ring.innerHTML = r;
     this.pips = Array.from(this.el.ring.children);
+    // Clicking a row of the J-Lens selects that pathway, which is what `ablate`
+    // acts on. The hit test uses the same geometry the drawing does, derived from
+    // the canvas width, so the two cannot drift apart.
+    this.el.jlens.addEventListener("mousedown", (ev) => {
+      const r2 = this.el.jlens.getBoundingClientRect();
+      const cell = Math.min((r2.width - 5 * 2 - 26) / STEER_N, (150 - 30 - 9 - 10) / STEER_N);
+      const i = Math.floor((ev.clientY - r2.top - 5) / cell);
+      if (i >= 0 && i < STEER_N) Steering.select(i);
+      ev.stopPropagation();
+    });
   },
 
   toggle() {
@@ -19003,6 +19796,48 @@ const ledger = {
       + Works.records.length + " PROVEN";
     e.fabPct.textContent = (comp * 100).toFixed(0) + "%";
     e.fabBar.style.width = (comp * 100).toFixed(1) + "%";
+    this.steering();
+  },
+
+  /**
+   * The J-Lens.
+   *
+   * The 8x8 coupling field as a heat grid, the dominant eigenvector as a bar along
+   * the bottom, and the diagnosis in words. The eigenvector is the actionable part
+   * and a matrix on its own does not show it: the grid tells you the board is hot,
+   * the bar tells you where, and the words tell you what to do about it.
+   */
+  steering() {
+    const e = this.el, sp = Steering.spectrum;
+    if (!sp) return;
+    e.jEdges.textContent = sp.edges + " pathways";
+    e.jDom.textContent = sp.dominant.toFixed(2);
+    e.jPart.textContent = sp.participation.toFixed(2) + " / " + STEER_N;
+    e.jCirc.textContent = (sp.circulation * 100).toFixed(0) + "%";
+    e.jTrace.textContent = sp.trace.toFixed(2);
+    const p = Steering.pathology;
+    e.jDiag.className = "jdiag" + (p.tone === "warn" ? " warn" : "");
+    e.jLabel.textContent = p.label + " · " + p.fix;
+    e.jWhy.textContent = p.why;
+
+    // Who the spectrum says is derailed. This is the part an operator acts on, and
+    // a severity-3 line is a fact about the planet rather than a fault: on a world
+    // whose fabrication style zeroes a phase, the cells that own it have nothing to
+    // draw and never will, and showing them merely idle would have an operator
+    // waiting for work that cannot arrive.
+    const sus = Steering.suspects();
+    if (sus.length) {
+      let h = "";
+      for (const x of sus) {
+        h += '<div class="jsus s' + x.sev + '"><k>' + x.cell.tag + '</k><span>'
+          + x.why + '</span></div>';
+      }
+      e.jSuspect.innerHTML = h;
+    } else {
+      e.jSuspect.innerHTML = '<div class="jsus"><k>·</k>'
+        + '<span>every discipline is drawing work</span></div>';
+    }
+    drawJLens(e.jlens);
   },
 
   /** Lower-third and hero cards, drained from the pilot's event list. */
@@ -19040,6 +19875,9 @@ const ledger = {
         this.cardQ.push({ kind: "COUNCIL", cls: "amber", title: ev.title, sub: ev.sub });
       } else if (ev.kind === "council-clear") {
         this.cardQ.push({ kind: "COUNCIL", cls: "jade", title: ev.title, sub: ev.sub });
+      } else if (ev.kind === "steer") {
+        this.cardQ.push({ kind: "STEERING INTERVENTION", cls: "", title: ev.title,
+          sub: ev.sub });
       }
       if (this.cardQ.length > 4) this.cardQ.splice(0, this.cardQ.length - 4);
     }
@@ -19477,6 +20315,11 @@ async function main() {
       structures.reseat(terrain);
     }
     Ocean.select(key);
+    // A terraform is the realm axis reaching straight past everything else and
+    // rewriting the ground the works are standing on, which is why it is the one
+    // event that couples REALM to FORMING directly.
+    Steering.couple("realm", "forming", 3.0);
+    Steering.drive("realm", "ledger", 1.6);
     // What grows is a property of the world, so it is rebuilt with the world and
     // not lerped: a jade sea's canopy standing on an ash plain for a second is a
     // lie the dissolve would tell for free.
@@ -19688,6 +20531,13 @@ async function main() {
     // three open holds and printed COMMISSIONED anyway was the loudest example of
     // the monitor reporting something it had not simulated.
     if (actions.skipRealm) pilot.requestHandover();
+    // The one intervention the operator has over the steering field, and it does
+    // whatever the current diagnosis prescribes rather than one fixed thing:
+    // re-route a stall, ablate a loop, steer off a cascade, hold when nominal.
+    if (actions.steer) {
+      const msg = Steering.intervene();
+      Works.emit("steer", "STEERING · " + Steering.pathology.label, msg);
+    }
     pilot.update(dt);
     // The cells fabricate after the pilot has founded whatever it founded this
     // frame, so a mass handed over on this tick is already on the books.
@@ -19846,6 +20696,7 @@ async function main() {
     Medium, MEDIA, BIOME_MEDIUM, traversalCaps, capsForBiome, BIOME_REALM, MOON_SET,
     structures, conduits, pilot, director, ledger, REALMS, SYSTEM_MANIFEST,
     Works, FAB_PHASES, FAB_STYLES, fabStyle, CELL_ROSTER, COUNCIL_SEATS,
+    Steering, STEER_SYSTEMS, PATHOLOGIES, jacobiEigen, spectrum,
     ObjectSculptSpec, NexusIterationSpec, planRealm,
     flora, BIOME_FLORA, ambient, BIOME_DRIFT, BIOME_FLIERS,
     start() {
