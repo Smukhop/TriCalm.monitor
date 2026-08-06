@@ -776,6 +776,7 @@ const S = {
   showWorldDressing: true,
   // flora & ambient life
   showFlora: true, floraDensity: 1.0, showDrift: true, showFliers: true,
+  showSettlement: true,
   // spells
   showSpells: true, spellLight: 1.0, spellSpray: 1.0, waterDepthTint: 1.0,
   // post
@@ -897,6 +898,7 @@ const SCHEMA = [
     { k: "floraDensity", l: "Scatter density", t: "f", min: 0, max: 1.6, step: 0.05 },
     { k: "showDrift", l: "Airborne drift", t: "b" },
     { k: "showFliers", l: "Flocks", t: "b" },
+    { k: "showSettlement", l: "Settlement dressing", t: "b" },
   ] },
   { group: "False Earth", items: [
     { k: "showPlanet", l: "Planet", t: "b" },
@@ -7093,6 +7095,517 @@ class Flora {
     this.blades = [];
     this.trees = [];
     this._job = null;
+  }
+}
+
+/* -------------------------------------------------------------- prop shaders
+ * The settlement dressing shares the flora prop path deliberately: a lantern lit
+ * differently from the tree beside it is the tell that two systems drew them. The
+ * one thing it adds is an emissive channel, carried PER VERTEX rather than per
+ * instance — a lantern is one draw call whose post is lit by the sun and whose
+ * head is lit by itself, and a per-instance flag would make the whole post glow.
+ * -------------------------------------------------------------------------- */
+const PROP_VERT = G.head + `
+in vec3 position;
+in vec3 normal;
+in vec3 aVertCol;
+in float aVertEmis;
+in vec3 aBase;
+in vec4 aQuat;
+in vec3 aScale;
+in vec3 aTint;
+in float aPhase;
+uniform mat4 projectionMatrix;
+uniform mat4 viewMatrix;
+uniform float uClock;
+uniform float uWindAngle;
+uniform float uWindStrength;
+uniform float uSway;
+out vec3 vWorld;
+out vec3 vNormal;
+out vec3 vCol;
+out float vEmis;
+vec3 qrot(vec4 q, vec3 v){ return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v); }
+void main(){
+  vec3 p = position * aScale;
+  vec2 wd = vec2(sin(uWindAngle), cos(uWindAngle));
+  float h = max(p.y, 0.0) / max(aScale.y, 0.001);
+  float sway = sin(uClock * 1.6 + aPhase) * 0.5 + sin(uClock * 2.53 + aPhase * 2.1) * 0.5;
+  vec3 w = qrot(aQuat, p) + aBase;
+  // Quadratic in height, so a mast pivots at its foot and a flag at the top of it
+  // travels while the foot does not move at all.
+  w += (wd.x * vec3(1,0,0) + wd.y * vec3(0,0,1))
+     * (h * h * sway * uWindStrength * uSway * 0.06);
+  vWorld = w;
+  vNormal = normalize(qrot(aQuat, normal));
+  vCol = aVertCol * aTint;
+  vEmis = aVertEmis;
+  gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
+}
+`;
+
+const PROP_FRAG = G.head + G.noise + G.shading + G.atmosphere + G.ocean + `
+in vec3 vWorld;
+in vec3 vNormal;
+in vec3 vCol;
+in float vEmis;
+out vec4 fragColor;
+uniform vec3 uCamPos;
+uniform vec3 uSunDir;
+uniform vec3 uSunRadiance;
+uniform vec3 uSH[9];
+uniform float uAmbient;
+uniform float uFogDensity;
+uniform float uFogHeight;
+uniform float uFogStart;
+uniform float uAerial;
+uniform float uEmisGain;
+uniform sampler2D uSkyLUT;
+void main(){
+  vec3 N = normalize(vNormal);
+  vec3 L = uSunDir;
+  vec3 V = normalize(uCamPos - vWorld);
+  float lit = wrapDiffuse(dot(N, L), 0.28);
+  vec3 col = vCol * uSunRadiance * 0.31830988618 * lit;
+  col += vCol * shIrradiance(N, uSH) * uAmbient * 0.31830988618;
+  // A tight specular lobe. Painted steel and varnished timber both have one, and
+  // without it every prop reads as unfired clay.
+  float spec = pow(max(dot(N, normalize(L + V)), 0.0), 42.0);
+  col += uSunRadiance * spec * 0.055 * (1.0 - vEmis);
+  if (vEmis > 0.001 && uEmisGain > 0.001) {
+    // A slow flicker, per instance. A lantern that is perfectly steady reads as a
+    // light source in a render; one that breathes reads as a lamp someone lit.
+    float fl = 0.86 + 0.14 * sin(uClock * 3.1 + vWorld.x * 0.7 + vWorld.z * 1.3)
+                    + 0.06 * sin(uClock * 7.7 + vWorld.z * 2.1);
+    col += vCol * uEmisGain * vEmis * fl;
+  }
+  col = waterColumn(col, vWorld, uCamPos, uClock);
+  col = applyAerial(col, uCamPos, vWorld, -V, L, uSkyLUT, uSunRadiance,
+                    uFogDensity, uFogHeight, uFogStart, uAerial);
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+/* =========================================================================
+ * SETTLEMENT DRESSING — what makes a raised mass a place someone works.
+ *
+ * The works already found footings and raise masses, and the conduit already
+ * paves between districts. What was missing is everything at human scale: the
+ * lantern that lights the apron, the crate stack waiting to be set, the fence
+ * along the drop, the banner over the seat, the brazier the night shift stands
+ * around. Without them a completed realm is correct engineering and an empty set.
+ *
+ * Two things separate this from the flora scatter, and both are why it is its own
+ * layer rather than another BIOME_FLORA entry:
+ *
+ *   PLACEMENT   flora fills a disc around the player; dressing rings the
+ *               DISTRICTS the pilot planned. A lantern in the middle of a dune
+ *               sea is litter. A lantern on the apron is infrastructure.
+ *   EMISSION    a lantern that does not emit is a post. So the instanced prop
+ *               path carries an emissive channel, which is also what lets the
+ *               brazier read at dusk and the banner tip catch a spark.
+ *
+ * It shares the flora prop shaders because the lighting, fog and shadow
+ * behaviour should be identical — a lantern lit differently from the tree beside
+ * it is the tell that two systems drew them.
+ * ========================================================================= */
+
+/**
+ * The dressing kit, per world.
+ *
+ *   lanterns  masts around the apron. `warm` is the head colour.
+ *   stores    crate and barrel stacks, on the ground, near the apron.
+ *   fence     runs of post-and-rail along the district edge.
+ *   banners   masts with a flag in the world's accent.
+ *   braziers  the strong emitters. Fewer, and only at the seat.
+ *
+ * Absent keys mean the world does not get that thing, and that is a statement:
+ * nothing on a vacuum plain is standing around a fire.
+ */
+const BIOME_KIT = {
+  _default: {
+    lanterns: { count: 9, ring: [7, 22], warm: "#ffd28a", gain: 2.6 },
+    stores: { count: 14, ring: [5, 16] },
+    fence: { runs: 4, ring: [12, 26], span: 7 },
+    banners: { count: 3, ring: [5, 11] },
+    braziers: { count: 2, ring: [4, 9], warm: "#ff9a4a", gain: 5.5 },
+  },
+  // A dune sea buries anything left on the ground, so there are no stores out and
+  // the lanterns are on taller masts.
+  ochre: {
+    lanterns: { count: 11, ring: [7, 24], warm: "#ffc470", gain: 3.0, tall: 1.35 },
+    stores: { count: 5, ring: [4, 10] },
+    fence: { runs: 6, ring: [10, 30], span: 8 },
+    banners: { count: 4, ring: [5, 12] },
+    braziers: { count: 2, ring: [4, 9], warm: "#ff9a4a", gain: 5.5 },
+  },
+  // Nothing burns in the open on a melt shelf, and nothing wooden survives, so the
+  // light is all electric and there is no fence.
+  magma: {
+    lanterns: { count: 13, ring: [6, 22], warm: "#9fd8ff", gain: 3.6 },
+    stores: { count: 8, ring: [5, 14] },
+    banners: { count: 2, ring: [5, 10] },
+  },
+  // A vacuum plain gets beacons and nothing else. No fire, no cloth, no crates
+  // left out in the fines.
+  regolith: {
+    lanterns: { count: 15, ring: [6, 26], warm: "#cfe0ff", gain: 3.2 },
+    stores: { count: 6, ring: [5, 13] },
+  },
+  abyss: {
+    lanterns: { count: 12, ring: [6, 22], warm: "#7fd8e8", gain: 3.4 },
+    stores: { count: 9, ring: [5, 14] },
+    banners: { count: 2, ring: [5, 10] },
+  },
+  // A moving plate: nothing is fenced, because the fence line moves, and stores
+  // are kept close so a channel opening does not take them.
+  floe: {
+    lanterns: { count: 11, ring: [6, 20], warm: "#cfeeff", gain: 3.2 },
+    stores: { count: 8, ring: [4, 11] },
+    banners: { count: 3, ring: [5, 11] },
+    braziers: { count: 1, ring: [4, 8], warm: "#ffb066", gain: 5.0 },
+  },
+  // A harbour is the one place with more dressing than mass.
+  tidal: {
+    lanterns: { count: 14, ring: [6, 26], warm: "#ffdca0", gain: 2.8 },
+    stores: { count: 20, ring: [4, 18] },
+    fence: { runs: 5, ring: [10, 24], span: 7 },
+    banners: { count: 5, ring: [5, 13] },
+    braziers: { count: 3, ring: [4, 10], warm: "#ff9a4a", gain: 5.5 },
+  },
+  shoal: {
+    lanterns: { count: 16, ring: [7, 28], warm: "#ffe0a8", gain: 3.4 },
+    stores: { count: 12, ring: [4, 14] },
+    banners: { count: 4, ring: [5, 12] },
+    braziers: { count: 2, ring: [4, 9], warm: "#ffa552", gain: 5.2 },
+  },
+  // An alpine pass: fence everything, because everything has a drop beside it.
+  kovir: {
+    lanterns: { count: 12, ring: [6, 24], warm: "#ffd6a0", gain: 3.0 },
+    stores: { count: 14, ring: [5, 15] },
+    fence: { runs: 8, ring: [9, 30], span: 8 },
+    banners: { count: 3, ring: [5, 11] },
+    braziers: { count: 3, ring: [4, 10], warm: "#ff9a4a", gain: 6.0 },
+  },
+};
+
+class Settlement {
+  constructor(terrain, graph) {
+    this.terrain = terrain;
+    this.graph = graph;
+    this.layers = [];
+    this.sites = [];
+    this.kit = null;
+    this._n = new THREE.Vector3();
+    this._q = new THREE.Quaternion();
+    this._v1 = new THREE.Vector3();
+    this._v2 = new THREE.Vector3();
+    this._m = new THREE.Matrix4();
+  }
+
+  /**
+   * A realm opens: rebuild the kit for its ground and ring its districts.
+   *
+   * Both arguments matter. The biome decides WHAT stands there; the districts
+   * decide WHERE. Passing the districts rather than reading a global is what lets
+   * the dressing follow a re-planned realm without a special case.
+   */
+  setRealm(biomeKey, districts, accent) {
+    this.dispose();
+    const q = clamp01(S.floraDensity === undefined ? 1 : S.floraDensity);
+    if (q <= 0.001 || S.showSettlement === false) return;
+    this.kit = BIOME_KIT[biomeKey] || BIOME_KIT._default;
+    this.sites = (districts || []).map((d) => ({ x: d.x, z: d.z }));
+    if (!this.sites.length) return;
+    this.accent = accent || [0.6, 0.8, 1.0];
+    const k = this.kit;
+    if (k.lanterns) this._build("lantern", k.lanterns, q);
+    if (k.stores) this._build("store", k.stores, q);
+    if (k.fence) this._build("fence", k.fence, q);
+    if (k.banners) this._build("banner", k.banners, q);
+    if (k.braziers) this._build("brazier", k.braziers, q);
+    this.place();
+  }
+
+  /* ---------------------------------------------------------- geometry kit */
+
+  /**
+   * One prop, merged into a single indexed geometry with per-vertex colour and a
+   * per-vertex emissive mask.
+   *
+   * The mask is the load-bearing part. A lantern is one draw call whose post is
+   * lit by the sun and whose head is lit by itself, and the only thing that can
+   * express that in a merged mesh is a per-vertex weight — a per-instance one
+   * would make the whole post glow.
+   */
+  _geometry(kind, spec) {
+    const parts = [];
+    const push = (g, hex, emis) => parts.push({ g, c: new THREE.Color(hex),
+      e: emis === undefined ? 0 : emis });
+    if (kind === "lantern") {
+      const tall = spec.tall === undefined ? 1 : spec.tall;
+      const post = new THREE.CylinderGeometry(0.045, 0.075, 2.5 * tall, 6);
+      post.translate(0, 1.25 * tall, 0);
+      push(post, "#2f3540");
+      // A shade over the head, so the light reads as thrown down rather than as a
+      // floating cube — the shade is what tells you where the light goes.
+      const shade = new THREE.ConeGeometry(0.24, 0.20, 6);
+      shade.translate(0, 2.72 * tall, 0);
+      push(shade, "#1d2230");
+      const head = new THREE.BoxGeometry(0.17, 0.24, 0.17);
+      head.translate(0, 2.52 * tall, 0);
+      push(head, spec.warm, 1);
+      const arm = new THREE.BoxGeometry(0.30, 0.045, 0.045);
+      arm.translate(0.10, 2.66 * tall, 0);
+      push(arm, "#2f3540");
+    } else if (kind === "store") {
+      // A stack, not a crate. Two boxes and a barrel at slightly wrong angles is
+      // the difference between stores and a shipping diagram.
+      const a = new THREE.BoxGeometry(0.62, 0.58, 0.62);
+      a.translate(0, 0.29, 0);
+      push(a, "#8a6b40");
+      const b = new THREE.BoxGeometry(0.50, 0.46, 0.50);
+      b.rotateY(0.34);
+      b.translate(0.10, 0.81, -0.07);
+      push(b, "#7a5c36");
+      const bar = new THREE.CylinderGeometry(0.21, 0.24, 0.56, 9);
+      bar.translate(-0.52, 0.28, 0.28);
+      push(bar, "#6b4b2c");
+      const hoop = new THREE.TorusGeometry(0.235, 0.022, 5, 12);
+      hoop.rotateX(Math.PI * 0.5);
+      hoop.translate(-0.52, 0.40, 0.28);
+      push(hoop, "#3a2c1e");
+    } else if (kind === "fence") {
+      // A whole run in one prop, so a fence is one instance rather than a line of
+      // them that has to be kept straight.
+      const n = 6, gap = (spec.span || 7) / (n - 1);
+      for (let i = 0; i < n; i++) {
+        const p = new THREE.CylinderGeometry(0.045, 0.058, 1.02, 5);
+        p.translate(i * gap - (spec.span || 7) * 0.5, 0.51, 0);
+        push(p, "#5c4a34");
+      }
+      for (let i = 0; i < n - 1; i++) {
+        for (const y of [0.42, 0.76]) {
+          const r = new THREE.BoxGeometry(gap, 0.055, 0.048);
+          r.translate(i * gap + gap * 0.5 - (spec.span || 7) * 0.5, y, 0);
+          push(r, "#77613f");
+        }
+      }
+    } else if (kind === "banner") {
+      const mast = new THREE.CylinderGeometry(0.035, 0.05, 3.4, 6);
+      mast.translate(0, 1.7, 0);
+      push(mast, "#413425");
+      // The flag is a plane offset from the mast so the sway in TREE_VERT — which
+      // is proportional to height squared — pivots it about the mast rather than
+      // translating the whole thing.
+      const flag = new THREE.PlaneGeometry(1.15, 0.62, 5, 1);
+      flag.translate(0.575, 2.86, 0);
+      push(flag, "#ffffff");
+      const tip = new THREE.OctahedronGeometry(0.075, 0);
+      tip.translate(0, 3.46, 0);
+      push(tip, "#ffd98a", 1);
+    } else if (kind === "brazier") {
+      const bowl = new THREE.CylinderGeometry(0.42, 0.26, 0.34, 9);
+      bowl.translate(0, 0.62, 0);
+      push(bowl, "#33383f");
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * PI2;
+        const leg = new THREE.CylinderGeometry(0.035, 0.045, 0.62, 5);
+        leg.rotateZ(0.20);
+        leg.rotateY(-a);
+        leg.translate(Math.cos(a) * 0.15, 0.31, Math.sin(a) * 0.15);
+        push(leg, "#2a2f36");
+      }
+      // The coals. An icosahedron rather than a sprite, because a sprite in this
+      // renderer would be the only unlit thing in the scene and would read as a
+      // decal on the image.
+      const coal = new THREE.IcosahedronGeometry(0.28, 1);
+      coal.scale(1, 0.55, 1);
+      coal.translate(0, 0.74, 0);
+      push(coal, spec.warm, 1);
+    }
+    return parts;
+  }
+
+  _build(kind, spec, quality) {
+    const parts = this._geometry(kind, spec);
+    if (!parts.length) return;
+    let vc = 0, ic = 0;
+    for (const p of parts) {
+      vc += p.g.attributes.position.count;
+      ic += p.g.index ? p.g.index.count : p.g.attributes.position.count;
+    }
+    const pos = new Float32Array(vc * 3), nrm = new Float32Array(vc * 3);
+    const col = new Float32Array(vc * 3), emi = new Float32Array(vc);
+    const idx = new Uint32Array(ic);
+    let vo = 0, io = 0;
+    for (const p of parts) {
+      const gp = p.g.attributes.position, gn = p.g.attributes.normal;
+      for (let i = 0; i < gp.count; i++) {
+        const o = (vo + i) * 3;
+        pos[o] = gp.getX(i); pos[o + 1] = gp.getY(i); pos[o + 2] = gp.getZ(i);
+        nrm[o] = gn.getX(i); nrm[o + 1] = gn.getY(i); nrm[o + 2] = gn.getZ(i);
+        col[o] = p.c.r; col[o + 1] = p.c.g; col[o + 2] = p.c.b;
+        emi[vo + i] = p.e;
+      }
+      const gi = p.g.index;
+      for (let i = 0; i < (gi ? gi.count : gp.count); i++) {
+        idx[io + i] = (gi ? gi.getX(i) : i) + vo;
+      }
+      io += gi ? gi.count : gp.count;
+      vo += gp.count;
+      p.g.dispose();
+    }
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
+    geo.setAttribute("aVertCol", new THREE.BufferAttribute(col, 3));
+    geo.setAttribute("aVertEmis", new THREE.BufferAttribute(emi, 1));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+
+    // Per-district counts. A ring of nine lanterns around six districts is
+    // fifty-four instances, which is the number the ring spec actually means.
+    const per = Math.max(1, Math.round((spec.count || spec.runs || 1) * quality));
+    const n = per * this.sites.length;
+    const data = {
+      base: new Float32Array(n * 3), quat: new Float32Array(n * 4),
+      scale: new Float32Array(n * 3), tint: new Float32Array(n * 3),
+      phase: new Float32Array(n), spec, kind, per, count: n,
+    };
+    geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(data.base, 3));
+    geo.setAttribute("aQuat", new THREE.InstancedBufferAttribute(data.quat, 4));
+    geo.setAttribute("aScale", new THREE.InstancedBufferAttribute(data.scale, 3));
+    geo.setAttribute("aTint", new THREE.InstancedBufferAttribute(data.tint, 3));
+    geo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(data.phase, 1));
+    geo.instanceCount = n;
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
+
+    const own = {
+      uWindStrength: { value: 1 },
+      // Cloth answers the wind; a cast-iron brazier does not.
+      uSway: { value: kind === "banner" ? 2.2 : kind === "lantern" ? 0.25 : 0 },
+      uEmisGain: { value: spec.gain === undefined ? 0 : spec.gain },
+    };
+    const mat = new THREE.RawShaderMaterial({
+      glslVersion: THREE.GLSL3,
+      vertexShader: PROP_VERT, fragmentShader: PROP_FRAG,
+      uniforms: Object.assign(own, shared("uCamPos", "uSunDir", "uSunRadiance",
+        "uSH", "uSkyLUT", "uAmbient", "uFogDensity", "uFogHeight", "uFogStart",
+        "uAerial")),
+      side: kind === "banner" ? THREE.DoubleSide : THREE.FrontSide,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.frustumCulled = false;
+    this.layers.push({ mesh, material: mat, own, data, kind,
+      item: this.graph.add({ mesh, beauty: mat }) });
+  }
+
+  /**
+   * Ring every district.
+   *
+   * Placement is a ring rather than a disc, and that is the whole difference
+   * between dressing and litter: the inner radius keeps a lantern off the mass it
+   * lights, and the outer radius keeps it inside the apron. A fence run is also
+   * oriented TANGENTIALLY, because a fence radiating outward from a district
+   * fences nothing.
+   */
+  place() {
+    const up = this._n, fwd = this._v1, right = this._v2;
+    const q = this._q, m = this._m;
+    const accent = new THREE.Color(this.accent[0], this.accent[1], this.accent[2]);
+    const tmp = new THREE.Color();
+    for (const L of this.layers) {
+      const d = L.data, spec = d.spec;
+      const ring = spec.ring || [6, 20];
+      let k = 0;
+      for (let si = 0; si < this.sites.length; si++) {
+        const site = this.sites[si];
+        for (let i = 0; i < d.per; i++, k++) {
+          const o3 = k * 3, o4 = k * 4;
+          // Golden-angle around the ring, salted by district so two districts do
+          // not get the same arrangement rotated.
+          const a = (i / d.per) * PI2 + hash1(si * 7.7 + 1.3) * PI2
+            + hash1(k * 3.1) * 0.5;
+          const r = mix(ring[0], ring[1], hash1(k * 5.3 + si * 2.1));
+          const x = site.x + Math.cos(a) * r;
+          const z = site.z + Math.sin(a) * r;
+          const h = this.terrain.heightAt(x, z);
+          this.terrain.normalAt(x, z, up);
+          const wet = Ocean.on ? Ocean.depthAt(x, z) : 0;
+          // A prop needs ground it can stand on. Anything else is skipped rather
+          // than tilted, because a lantern at forty degrees reads as wreckage.
+          if (1 - up.y > 0.30 || wet > 0.15) {
+            d.scale[o3] = 0; d.scale[o3 + 1] = 0; d.scale[o3 + 2] = 0;
+            continue;
+          }
+          d.base[o3] = x; d.base[o3 + 1] = h; d.base[o3 + 2] = z;
+          // Props stand plumb, not normal to the slope — a lantern leaning with
+          // the hillside is the single most common tell in scattered dressing.
+          up.lerp(UP_Y, 0.92).normalize();
+          if (L.kind === "fence") {
+            // Tangential: perpendicular to the radius, so the run follows the
+            // contour of the apron instead of pointing out of it.
+            fwd.set(-Math.sin(a), 0, Math.cos(a));
+          } else {
+            // Everything else faces the district, which is where the work is.
+            fwd.set(site.x - x, 0, site.z - z);
+            if (fwd.lengthSq() < 1e-6) fwd.set(1, 0, 0);
+            fwd.normalize();
+          }
+          right.crossVectors(up, fwd).normalize();
+          fwd.crossVectors(right, up).normalize();
+          m.makeBasis(right, up, fwd);
+          q.setFromRotationMatrix(m);
+          d.quat[o4] = q.x; d.quat[o4 + 1] = q.y;
+          d.quat[o4 + 2] = q.z; d.quat[o4 + 3] = q.w;
+          const s = 0.86 + hash1(k * 11.7) * 0.30;
+          d.scale[o3] = s; d.scale[o3 + 1] = s; d.scale[o3 + 2] = s;
+          // A banner flies the realm's accent; everything else keeps its own
+          // per-vertex colour, so its instance tint is a brightness jitter only.
+          if (L.kind === "banner") {
+            tmp.copy(accent).offsetHSL(0, 0, (hash1(k * 13.1) - 0.5) * 0.14);
+          } else {
+            const v = 0.84 + hash1(k * 17.3) * 0.32;
+            tmp.setRGB(v, v, v);
+          }
+          d.tint[o3] = tmp.r; d.tint[o3 + 1] = tmp.g; d.tint[o3 + 2] = tmp.b;
+          d.phase[k] = hash1(k * 23.9) * PI2;
+        }
+      }
+      for (const key of ["aBase", "aQuat", "aScale", "aTint", "aPhase"]) {
+        L.mesh.geometry.attributes[key].needsUpdate = true;
+      }
+    }
+  }
+
+  update(dt) {
+    if (!this.layers.length) return;
+    const at = Biome.live.atmos;
+    const ws = S.windStrength
+      * (S.biomeAtmos && at.wind !== undefined ? at.wind : 1);
+    for (const L of this.layers) L.own.uWindStrength.value = ws;
+  }
+
+  setVisible(v) { for (const L of this.layers) L.item.visible = v; }
+
+  /** Props standing after the slope and wetness rejection, for the monitor. */
+  get placed() {
+    let n = 0;
+    for (const L of this.layers) {
+      for (let i = 0; i < L.data.count; i++) if (L.data.scale[i * 3] > 0) n++;
+    }
+    return n;
+  }
+
+  dispose() {
+    for (const L of this.layers) {
+      const i = this.graph.items.indexOf(L.item);
+      if (i >= 0) this.graph.items.splice(i, 1);
+      this.graph.scene.remove(L.mesh);
+      L.mesh.geometry.dispose();
+      L.material.dispose();
+    }
+    this.layers = [];
   }
 }
 
@@ -18908,6 +19421,9 @@ class Pilot {
     this.stateT = 0;
     this.holdT = 0;
     Works.openRealm(this.plan);
+    // The dressing rings the districts this plan just chose, so it arrives with
+    // the charter rather than after the first mass is up.
+    if (this.ctx.dress) this.ctx.dress(this.plan);
     // The manifest's traversal column is finally read here rather than being
     // inferred from two biome sets: a realm that says "Loki cutter" gets a hull, a
     // realm that says "snow-surf" gets the board on its transits, and a realm that
@@ -20235,13 +20751,27 @@ async function main() {
   });
   // Density changes the instance counts, so it rebuilds rather than scaling — and
   // it is a discrete slider precisely because a per-frame rebuild is not one.
+  const settlement = new Settlement(terrain, graph);
+  onChange("showSettlement", (v) => settlement.setVisible(!!v));
   onChange("floraDensity", () => {
     flora.setBiome(Biome.key);
     flora.settle(controller.position.x, controller.position.z);
     flora.setVisible(S.showFlora);
     ambient.setBiome(Biome.key);
     ambient.setVisible(S.showFlora);
+    if (pilotRef && pilotRef.plan) dressRealm(pilotRef.plan);
   });
+  /**
+   * One path for dressing a realm, from the pilot opening one or from the density
+   * slider rebuilding. The districts come from the plan rather than from a global,
+   * so a re-planned realm re-dresses without a special case.
+   */
+  function dressRealm(plan) {
+    if (!plan) return;
+    settlement.setRealm(plan.realm.biome, plan.districts,
+      BIOMES[plan.realm.biome].accent);
+    settlement.setVisible(S.showSettlement);
+  }
 
   rig.groundAt = (x, z) => terrain.heightAt(x, z);
   let post = null;
@@ -20356,6 +20886,7 @@ async function main() {
   const pilot = new Pilot({
     terrain, controller, rig, suit, spells, beams, spray, structures, conduits,
     terraform: (key) => applyBiome(key),
+    dress: dressRealm,
   });
   const director = new Director(rig, pilot, controller);
   pilotRef = pilot;
@@ -20427,6 +20958,7 @@ async function main() {
     sea.update(camera.position);
     flora.update(1 / 60, controller);
     ambient.update(1 / 60, controller, camera);
+    settlement.update(1 / 60);
     wake.update(1 / 60);
     spray.update(1 / 60, camera, terrain);
     spells.update(1 / 60);
@@ -20646,6 +21178,7 @@ async function main() {
     // After the terrain clipmap and the sea: a reseat samples the height mirror
     // and the water depth, and both are this frame's as of the two calls above.
     if (S.showFlora) { flora.update(dt, controller); ambient.update(dt, controller, camera); }
+    if (S.showSettlement) settlement.update(dt);
     const tTerrain = performance.now();
     charRender.sync();
     suitRender.sync();
@@ -20699,6 +21232,7 @@ async function main() {
     Steering, STEER_SYSTEMS, PATHOLOGIES, jacobiEigen, spectrum,
     ObjectSculptSpec, NexusIterationSpec, planRealm,
     flora, BIOME_FLORA, ambient, BIOME_DRIFT, BIOME_FLIERS,
+    settlement, BIOME_KIT, dressRealm,
     start() {
       if (runtimeDisposed || runtimeActive) return;
       runtimeActive = true; prev = performance.now(); requestAnimationFrame(frame);
