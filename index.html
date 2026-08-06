@@ -18588,6 +18588,7 @@ const Works = {
   reset() {
     this.style = fabStyle(Biome.key);
     Steering.init();
+    Audit.reset();
     this.realm = null;
     this.inhabited = false;
     this.queue.length = 0;
@@ -18710,6 +18711,26 @@ const Works = {
   _rand() { return Rng.next("works.hold." + (this.realm ? this.realm.id : "none")); },
 
   /**
+   * Why this cell stopped.
+   *
+   * Two sources, and the split is the point. Most of the time the reason is a
+   * failure mode of the TRADE — a piping cell fails radiography, an E&I cell fails
+   * a loop check — and those are the same everywhere. About a third of the time
+   * the reason is the WORLD, drawn from the fabrication style's own declared
+   * hazard, so a hold on the ice plate can say the plate is breaking up and a hold
+   * on the alpine pass can say the bedding daylighted in the cut. Every style
+   * already carried that string and nothing read it.
+   */
+  _holdReason(cell) {
+    const world = hazardClauses(this.style);
+    if (world.length && this._rand() < 0.34) {
+      return world[(this._rand() * world.length) | 0];
+    }
+    const list = HOLD_BY_DISC[cell.disc] || HOLD_BY_DISC.qa;
+    return list[(this._rand() * list.length) | 0];
+  },
+
+  /**
    * The avatars have finished forming a mass. Hand its eleven phases to the works.
    * Pads are excluded: a graded disc is groundwork, not a facility, and enqueueing
    * eleven phases of commissioning for one is how a progress figure stops meaning
@@ -18795,6 +18816,7 @@ const Works = {
         if (c.holdT <= 0) {
           c.state = CELL_IDLE; c.item = null; c.holdWhy = "";
           this.tally.holdsCleared++;
+          Audit.emit("works.hold.cleared", { cell: c.id, call: c.call }, "works");
           // The return leg. This is what turns an escalation from circulation into
           // mutual coupling, and it is why clearing holds moves the diagnosis.
           Steering.drive("council", "cells", 3.2);
@@ -18827,10 +18849,13 @@ const Works = {
         const ph = FAB_PHASES[item.phaseIndex];
         c.state = CELL_HOLD;
         c.holdT = 3.5 + this._rand() * 7.0;
-        c.holdWhy = HOLD_REASONS[(this._rand() * HOLD_REASONS.length) | 0];
+        c.holdWhy = this._holdReason(c);
         c.willHold = false;
         item.claimed = false;
         this.tally.holdsRaised++;
+        Audit.emit("works.hold.raised", { cell: c.id, call: c.call, disc: c.disc,
+          phase: ph.id, mass: item.rec.label, why: c.holdWhy,
+          forTicks: Math.round(c.holdT * Sim.HZ) }, "works");
         // An escalation is one-way until it is cleared, and one-way traffic is
         // exactly what the skew part of the field measures — so a realm drowning
         // in unreviewed holds will read as CIRCULAR rather than as busy.
@@ -18914,6 +18939,9 @@ const Works = {
 
     if (item.progress >= 1) {
       this.tally.phasesDone++;
+      Audit.emit("works.phase.closed", { phase: ph.id, mass: rec.label,
+        by: cell ? cell.id : "avatars",
+        complete: +clamp01(rec.complete || 0).toFixed(3) }, "works");
       Steering.drive(cell ? "cells" : "pilot", "ledger", 1.4);
       Steering.drive("ledger", "council", 0.7);
       if (rec.phase <= item.phaseIndex) rec.phase = item.phaseIndex + 1;
@@ -18958,21 +18986,74 @@ const Works = {
     }
     const comp = this.completion;
     const holds = this.openHolds;
+    /**
+     * Every seat's ruling, with the evidence it rests on.
+     *
+     * The rulings were already derived from real conditions rather than drawn —
+     * what was missing was PROVENANCE. A seat said "MASSES NOT TOPPED OUT" and an
+     * operator had to take that on trust, because nothing recorded which figure
+     * the seat had looked at, what it had compared it against, or where that
+     * figure came from. So each check now carries the measure, its source, the
+     * threshold and the observed value, and the seat keeps them.
+     *
+     * That is the difference between a gate and a verdict: a gate you can argue
+     * with. It is also what makes the export useful — an exported ruling that says
+     * only "held" is a log line, one that says "held because completion was 0.41
+     * against a 0.62 threshold, measured over 7 mass records" is a finding.
+     */
     const checks = [
-      { ok: comp > 0.62, why: "MASSES NOT TOPPED OUT — " + Math.round(comp * 100) + "% CLAD" },
-      { ok: holds === 0, why: holds + " CELL HOLD" + (holds === 1 ? "" : "S") + " STILL OPEN" },
-      { ok: this.tally.handedOver > 0, why: "NO SYSTEM YET PROVEN END TO END" },
+      { ok: comp > 0.62,
+        why: "MASSES NOT TOPPED OUT — " + Math.round(comp * 100) + "% CLAD",
+        evidence: [
+          { source: "Works.completion", measure: "weighted phase completion",
+            value: +comp.toFixed(4), threshold: 0.62, op: ">",
+            over: this.records.length + " mass records" },
+          { source: "FAB_PHASES", measure: "phases closed",
+            value: this.tally.phasesDone, threshold: null, op: "info",
+            over: FAB_PHASES.length + " phases per mass" },
+        ] },
+      { ok: holds === 0,
+        why: holds + " CELL HOLD" + (holds === 1 ? "" : "S") + " STILL OPEN",
+        evidence: [
+          { source: "Works.openHolds", measure: "cells currently held",
+            value: holds, threshold: 0, op: "=",
+            over: this.cells.length + " resident cells" },
+          { source: "Works.tally", measure: "holds raised / cleared this session",
+            value: this.tally.holdsRaised + " / " + this.tally.holdsCleared,
+            threshold: null, op: "info", over: "session" },
+        ] },
+      { ok: this.tally.handedOver > 0,
+        why: "NO SYSTEM YET PROVEN END TO END",
+        evidence: [
+          { source: "Works.tally.handedOver", measure: "masses proven end to end",
+            value: this.tally.handedOver, threshold: 1, op: ">=",
+            over: this.records.length + " mass records" },
+          { source: "Works.style", measure: "fabrication style in force",
+            value: this.style.label, threshold: null, op: "info",
+            over: this.realm ? this.realm.seat : "no realm" },
+        ] },
     ];
     let all = true;
     for (let i = 0; i < this.council.length; i++) {
       const s = this.council[i], ck = checks[i];
       const was = s.hold;
       s.cleared = ck.ok; s.hold = !ck.ok; s.why = ck.ok ? "" : ck.why;
+      s.evidence = ck.evidence;
+      s.seen++;
+      s.at = Sim.tick;
       if (s.hold) {
         all = false;
-        if (!was) this.emit("council-hold", "SEAT " + s.tag + " HOLDS", s.name + " · " + ck.why);
+        if (!was) {
+          this.emit("council-hold", "SEAT " + s.tag + " HOLDS", s.name + " · " + ck.why);
+          // The ruling AND what it rests on. An exported hold that says only
+          // "held" is a log line; one carrying its measures is a finding.
+          Audit.emit("council.hold", { seat: s.tag, axis: s.name, why: ck.why,
+            evidence: ck.evidence }, "council");
+        }
       } else if (was) {
         this.emit("council-clear", "SEAT " + s.tag + " CLEARS", s.name);
+        Audit.emit("council.clear", { seat: s.tag, axis: s.name,
+          evidence: ck.evidence }, "council");
       }
     }
     return all;
@@ -19824,18 +19905,197 @@ function worldChecksum(pilot) {
   return fnv1a(parts.join("|"));
 }
 
-const HOLD_REASONS = [
-  "AWAITING VENDOR DATA",
-  "WELD PROCEDURE NOT QUALIFIED",
-  "HEAVY LIFT WINDOW CLOSED",
-  "MATERIAL CERT MISSING",
-  "INTERFERENCE WITH ADJACENT MASS",
-  "GEOTECH BELOW ASSUMED BEARING",
-  "LOOP CHECK FAILED — REWORK",
-  "CRYOGENIC INSULATION OUT OF SPEC",
-  "SPOOL DIMENSIONALLY REJECTED",
-  "POWER NOT YET ENERGISED",
-];
+/* =========================================================================
+ * THE AUDIT LOG — commands in, events out, hash-chained.
+ *
+ * The v20 integration report's gate for this row was "every persistent mutation
+ * can be replayed and audited", and its own implementation was honest about being
+ * a scaffold: it wrapped mission methods in envelopes and recorded correlated
+ * events, but nothing tied one event to the next, so a log with a line removed
+ * from the middle read exactly like a log without one.
+ *
+ * This is the same shape with the two things that make the claim true:
+ *
+ *   A CHAIN.   Every event's hash covers the previous event's hash. Remove,
+ *              reorder or edit any entry and every hash after it stops matching,
+ *              which `verify()` reports as the index where the chain broke. That
+ *              is what turns "audited" from a filing habit into a property.
+ *
+ *   CORRELATION. Every event names the command that caused it. A hold raised
+ *              three ticks after a charter opened is attributable to that charter,
+ *              and the inspector can show a command with its consequences under
+ *              it rather than a flat stream.
+ *
+ * What this is NOT, stated plainly because the report was right to state it: this
+ * is a local, in-memory, single-process log. It is not durable storage, it is not
+ * a server-authoritative bus, and a command here is validated by the handler that
+ * runs it rather than by a policy layer. Those are the next branches. What is real
+ * is that the mutations go through one door, the door is counted, and the count
+ * can be checked.
+ * ========================================================================= */
+
+const Audit = {
+  /** Append-only within a session. Capped, because a monitor runs for hours. */
+  events: [],
+  commands: [],
+  MAX: 900,
+  seq: 0,
+  /** The chain head. Every new event folds this in and replaces it. */
+  head: "00000000",
+  /** Events discarded off the front of the ring. The chain still covers them —
+   *  `verify` starts from the oldest retained entry and says so. */
+  evicted: 0,
+  /** The command currently executing, so anything it causes correlates to it. */
+  _ctx: "",
+  /** Per-type counts, for the inspector's coverage read. */
+  counts: new Map(),
+
+  reset() {
+    this.events.length = 0;
+    this.commands.length = 0;
+    this.seq = 0;
+    this.head = "00000000";
+    this.evicted = 0;
+    this._ctx = "";
+    this.counts.clear();
+  },
+
+  /**
+   * Record that something happened.
+   *
+   * `at` is the SIMULATION tick, not the wall clock. That matters for replay: two
+   * runs of the same seed produce the same tick numbers and therefore the same
+   * chain, where two runs stamped with Date.now() would produce different hashes
+   * for identical worlds and the chain would be useless for comparison.
+   */
+  emit(type, payload, source) {
+    const id = "e" + (++this.seq).toString(36);
+    const body = [id, type, Sim.tick, source || "sim", this._ctx,
+      JSON.stringify(payload === undefined ? null : payload)].join("|");
+    const hash = fnv1a(this.head + "|" + body);
+    const ev = { id, type, tick: Sim.tick, source: source || "sim",
+      cause: this._ctx, payload: payload === undefined ? null : payload,
+      prev: this.head, hash };
+    this.head = hash;
+    this.events.push(ev);
+    this.counts.set(type, (this.counts.get(type) || 0) + 1);
+    if (this.events.length > this.MAX) {
+      this.events.splice(0, this.events.length - this.MAX);
+      this.evicted += 1;
+    }
+    return ev;
+  },
+
+  /**
+   * Run a consequential mutation as a named command.
+   *
+   * The handler does the work; this wraps it so the mutation is attributable,
+   * correlated, and refusable. A handler that returns `{ok:false, why}` is a
+   * REJECTION, and rejections are recorded too — a log that only contains what
+   * succeeded cannot answer "why did nothing happen when I pressed that".
+   */
+  issue(type, payload, handler, source) {
+    const id = "c" + (this.commands.length + 1).toString(36);
+    const prev = this._ctx;
+    this._ctx = id;
+    const cmd = { id, type, tick: Sim.tick, source: source || "operator",
+      payload: payload === undefined ? null : payload, ok: true, why: "" };
+    let out;
+    try {
+      out = handler ? handler(payload) : undefined;
+      if (out && out.ok === false) { cmd.ok = false; cmd.why = out.why || "refused"; }
+    } catch (err) {
+      cmd.ok = false;
+      cmd.why = String((err && err.message) || err);
+    }
+    this.commands.push(cmd);
+    if (this.commands.length > 240) this.commands.splice(0, this.commands.length - 240);
+    // Emitted while the command is still the active context, so the accept/reject
+    // event correlates to the command that produced it. This used to patch `cause`
+    // onto the event AFTER emitting, which meant the stored value no longer matched
+    // the one the hash covered — the chain reported a mismatch at the first command
+    // in every log, and it was right to. Anything that changes an event has to
+    // happen before it is sealed.
+    this.emit(cmd.ok ? "command.accepted" : "command.rejected",
+      { command: type, why: cmd.why || "" }, source || "operator");
+    this._ctx = prev;
+    return out;
+  },
+
+  /**
+   * Walk the chain and report the first index where it breaks.
+   *
+   * Recomputes each hash from its own body and its predecessor's hash. `from` is
+   * the oldest retained entry's `prev`, which is the honest starting point once
+   * the ring has evicted anything — the chain is intact from there, and claiming
+   * to verify back to the genesis of a log whose front has been dropped would be
+   * a lie the function tells about itself.
+   */
+  verify() {
+    if (!this.events.length) return { ok: true, checked: 0, brokeAt: -1 };
+    let prev = this.events[0].prev;
+    for (let i = 0; i < this.events.length; i++) {
+      const e = this.events[i];
+      if (e.prev !== prev) return { ok: false, checked: i, brokeAt: i, reason: "prev mismatch" };
+      const body = [e.id, e.type, e.tick, e.source, e.cause,
+        JSON.stringify(e.payload)].join("|");
+      if (fnv1a(prev + "|" + body) !== e.hash) {
+        return { ok: false, checked: i, brokeAt: i, reason: "hash mismatch" };
+      }
+      prev = e.hash;
+    }
+    return { ok: true, checked: this.events.length, brokeAt: -1,
+      head: this.head, evicted: this.evicted };
+  },
+
+  /** Commands with the events each caused, newest first — the inspector's view. */
+  correlated(limit) {
+    const byCause = new Map();
+    for (const e of this.events) {
+      if (!e.cause) continue;
+      let list = byCause.get(e.cause);
+      if (!list) { list = []; byCause.set(e.cause, list); }
+      list.push(e);
+    }
+    const out = [];
+    for (let i = this.commands.length - 1; i >= 0 && out.length < (limit || 12); i--) {
+      const c = this.commands[i];
+      out.push({ command: c, events: byCause.get(c.id) || [] });
+    }
+    return out;
+  },
+};
+
+/**
+ * Why work stops, by DISCIPLINE. A hold used to be one draw from a flat list, so
+ * a piping cell could be held for "cryogenic insulation out of spec" and a civil
+ * cell for "loop check failed" — plausible-sounding sentences attached to the
+ * wrong trade, which is exactly the kind of detail that stops a monitor being
+ * believed once someone who knows the work reads it.
+ */
+const HOLD_BY_DISC = {
+  civil: ["GEOTECH BELOW ASSUMED BEARING", "SETTLEMENT OUTSIDE TOLERANCE",
+    "EXCAVATION SUPPORT NOT SIGNED OFF", "CONCRETE BREAK STRENGTH SHORT"],
+  struct: ["WELD PROCEDURE NOT QUALIFIED", "MEMBER DIMENSIONALLY REJECTED",
+    "BOLT TORQUE RECORDS INCOMPLETE", "SURVEY OUT OF PLUMB"],
+  mech: ["HEAVY LIFT WINDOW CLOSED", "RIGGING STUDY NOT APPROVED",
+    "ALIGNMENT OUTSIDE VENDOR LIMIT", "SOFT FOOT ON THE SKID"],
+  piping: ["SPOOL DIMENSIONALLY REJECTED", "MATERIAL CERT MISSING",
+    "RADIOGRAPHY REJECTED — REWORK", "HYDROTEST PACK INCOMPLETE"],
+  eni: ["LOOP CHECK FAILED — REWORK", "POWER NOT YET ENERGISED",
+    "CABLE MEGGER OUT OF SPEC", "EARTHING NOT PROVEN"],
+  qa: ["AWAITING VENDOR DATA", "PUNCH LIST NOT CLEARED",
+    "PRESERVATION RECORDS MISSING", "PERFORMANCE CURVE NOT MET"],
+};
+/**
+ * The world's own hazard, split into clauses. A hold on the alpine pass should be
+ * able to say "rockfall"; a hold on the floe should be able to say "plate
+ * breakup". Every style already declares its hazard — nothing was reading it.
+ */
+function hazardClauses(style) {
+  return String((style && style.hazard) || "").split("·")
+    .map((h) => h.trim().toUpperCase()).filter(Boolean);
+}
 
 /* =========================================================================
  * THE PILOT — the autonomous walker.
@@ -19908,6 +20168,11 @@ class Pilot {
     // The dressing rings the districts this plan just chose, so it arrives with
     // the charter rather than after the first mass is up.
     if (this.ctx.dress) this.ctx.dress(this.plan);
+    Audit.emit("realm.opened", { realm: this.plan.realm.id,
+      numeral: this.plan.realm.numeral, seat: this.plan.realm.seat,
+      biome: this.plan.realm.biome, inhabited: !!this.plan.realm.inhabited,
+      cells: Works.cells.length, districts: this.plan.districts.length,
+      tasks: this.plan.tasks.length, style: Works.style.label }, "pilot");
     // The manifest's traversal column is finally read here rather than being
     // inferred from two biome sets: a realm that says "Loki cutter" gets a hull, a
     // realm that says "snow-surf" gets the board on its transits, and a realm that
@@ -21317,6 +21582,10 @@ async function main() {
   }
   function applyBiome(key) {
     if (!BIOMES[key]) return;
+    return Audit.issue("world.terraform", { from: Biome.key, to: key },
+      () => _applyBiome(key), "operator");
+  }
+  function _applyBiome(key) {
     Biome.select(key);
     S.biome = key;
     const want = regimeKey(key);
@@ -21543,17 +21812,42 @@ async function main() {
       if (!pilot.enabled) pilot.brake();
     }
     if (actions.ledger) { ledger.toggle(); S.showLedger = ledger.on; overlay.syncBool("showLedger"); }
-    if (actions.skipTask) pilot.nextTask();
+    // ---- operator commands -------------------------------------------------
+    // The four keys that change the world go through the command door rather than
+    // calling straight into the systems. It costs a closure each and it buys the
+    // one thing the report asked for: every consequential mutation is named,
+    // counted, attributable, and refusable.
+    if (actions.skipTask) {
+      Audit.issue("item.skip", { realm: pilot.realmIndex, task: pilot.taskIndex },
+        () => { pilot.nextTask(); });
+    }
     // Skipping a realm still goes through the council. An override that walked past
     // three open holds and printed COMMISSIONED anyway was the loudest example of
     // the monitor reporting something it had not simulated.
-    if (actions.skipRealm) pilot.requestHandover();
+    if (actions.skipRealm) {
+      Audit.issue("realm.handover.request", { realm: pilot.realmIndex },
+        () => {
+          // The council can refuse, and a refusal is recorded. A log that only
+          // holds what succeeded cannot answer "why did nothing happen".
+          const before = Works.openHolds;
+          pilot.requestHandover();
+          return before > 0
+            ? { ok: false, why: before + " cell hold(s) open at request" }
+            : undefined;
+        });
+    }
     // The one intervention the operator has over the steering field, and it does
     // whatever the current diagnosis prescribes rather than one fixed thing:
     // re-route a stall, ablate a loop, steer off a cascade, hold when nominal.
     if (actions.steer) {
-      const msg = Steering.intervene();
-      Works.emit("steer", "STEERING · " + Steering.pathology.label, msg);
+      Audit.issue("steering.intervene",
+        { pathology: Steering.pathology.id, action: Steering.pathology.action,
+          dominant: +Steering.spectrum ? +Steering.spectrum.dominant.toFixed(3) : 0 },
+        () => {
+          const msg = Steering.intervene();
+          Works.emit("steer", "STEERING · " + Steering.pathology.label, msg);
+          Audit.emit("steering.applied", { msg }, "steering");
+        });
     }
     /* ---- the authoritative tick --------------------------------------------
      * The pilot, the works and the steering field advance in FIXED steps off an
@@ -21729,6 +22023,7 @@ async function main() {
     Works, FAB_PHASES, FAB_STYLES, fabStyle, CELL_ROSTER, COUNCIL_SEATS,
     Steering, STEER_SYSTEMS, PATHOLOGIES, jacobiEigen, spectrum,
     Sim, Rng, worldChecksum, fnv1a, CANON, CANON_CELLS, CANON_BY_WORLD, validateCanon,
+    Audit, HOLD_BY_DISC, hazardClauses,
     ObjectSculptSpec, NexusIterationSpec, planRealm,
     flora, BIOME_FLORA, ambient, BIOME_DRIFT, BIOME_FLIERS,
     settlement, BIOME_KIT, dressRealm,
