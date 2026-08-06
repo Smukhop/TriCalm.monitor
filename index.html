@@ -17604,7 +17604,7 @@ class StructureField {
       kind: spec.kind === undefined ? K_TOWER : spec.kind,
       square: spec.square === undefined ? 0.72 : spec.square,
       aspect: spec.aspect === undefined ? 1 : spec.aspect,
-      seed: spec.seed === undefined ? Math.random() * 97 : spec.seed,
+      seed: spec.seed === undefined ? Rng.range("plan.massSeed", 0, 97) : spec.seed,
       emis: spec.emis === undefined ? 1 : spec.emis,
       tint: spec.tint || [0.42, 0.45, 0.52],
       grow: 0, lit: 0, label: spec.label || "MASS",
@@ -17844,7 +17844,7 @@ class ConduitNet {
     }
     this.posAttr.needsUpdate = true;
     const link = {
-      i, progress: 0, glow: 1, seed: Math.random() * 9,
+      i, progress: 0, glow: 1, seed: Rng.range("struct.seed", 0, 9),
       tint: tint || [0.42, 0.86, 1.0], length: len,
       ax, az, bx, bz,
     };
@@ -17884,6 +17884,13 @@ class ConduitNet {
 const REALMS = SYSTEM_MANIFEST.worlds;
 
 /** A tiny deterministic generator, so a realm's layout is the same every visit. */
+/**
+ * The plan's own generator. Kept as a local LCG rather than a named stream for one
+ * reason: planning a realm draws a few hundred values in a tight loop, and a named
+ * stream would interleave those draws with anything else that happened to be
+ * drawing at the time. A local generator seeded FROM the world seed is both
+ * reproducible and immune to that interleaving.
+ */
 function makeRng(seed) {
   let s = (seed * 2654435761) % 4294967296;
   return () => {
@@ -17934,7 +17941,9 @@ function realmTint(biomeKey, rng) {
  */
 function planRealm(index, terrain) {
   const realm = REALMS[index % REALMS.length];
-  const rng = makeRng(index * 7919 + 13);
+  // Seeded from the world seed as well as the realm index, so reseeding the world
+  // re-plans every realm rather than leaving the layout pinned to the source.
+  const rng = makeRng((Rng.seed ^ (index * 7919 + 13)) >>> 0);
   const tint = () => realmTint(realm.biome, rng);
 
   const seatA = rng() * PI2;
@@ -18358,6 +18367,173 @@ function fabStyle(biomeKey) {
  * emergent one, and `holdRisk` is the per-assignment chance that the cell runs into
  * something it cannot close on its own.
  */
+/* =========================================================================
+ * THE CANONICAL CELL ROSTER — one agent identity, validated against the manifest.
+ *
+ * The gap this closes was a duplicate cast. `CELL_ROSTER` below describes nine
+ * DISCIPLINES — grade and earthworks, piling, primary steel, and so on — with a
+ * rate and a hold risk each. That is a profile, not a person, and the monitor was
+ * using it as both: every inhabited world showed the same nine anonymous rows, so
+ * CIV-1 on the dune sea and CIV-1 on the alpine pass were the same row of pixels
+ * with no way to tell them apart, and nothing a cell did could be attributed to
+ * anyone in particular.
+ *
+ * So identity moves here and the profile stays a profile. Every inhabited world in
+ * SYSTEM_MANIFEST gets nine NAMED cells with their own call sign, roles and
+ * capabilities; each is bound at realm open to one discipline profile, which
+ * supplies the rate and the hold risk. The roster is keyed by world id, so the
+ * arithmetic the manifest has always asserted — nine cells per inhabited body — is
+ * now a fact the code can be checked against rather than a caption.
+ *
+ * The tidebreak nine are carried over verbatim from the v19 corps, ids and call
+ * signs intact, because those names are canon and renaming canon to fit a refactor
+ * is how a save file stops loading. The other four worlds are authored in the same
+ * idiom.
+ *
+ * `caps` is not decoration either — it is what the suspect detector reads to
+ * explain WHY a cell has nothing to draw, and what a future task graph will match
+ * a requirement against.
+ * ========================================================================= */
+const CANON_CELLS = Object.freeze([
+  /* --- V · TIDEBREAK HARBOUR — carried over from the v19 corps, unchanged ---- */
+  { id: "tide-sonar", worldId: "tidebreak", call: "ECHO-1", name: "Sonar Pathfinders", roles: ["survey"], caps: ["terrain_scan", "sonar_rescue", "route_mapping"] },
+  { id: "tide-cutter", worldId: "tidebreak", call: "WAKE-2", name: "Loki Cutter Crew", roles: ["survey", "fabrication"], caps: ["loki_cutter", "wave_surf", "route_mapping"] },
+  { id: "tide-forge", worldId: "tidebreak", call: "ANCHOR-3", name: "Breakwater Forge", roles: ["fabrication"], caps: ["structural_fabrication", "habitat_repair"] },
+  { id: "tide-lattice", worldId: "tidebreak", call: "CURRENT-4", name: "Tidal Lattice Unit", roles: ["fabrication"], caps: ["energy_lattice", "structural_fabrication"] },
+  { id: "tide-audit", worldId: "tidebreak", call: "CLEAR-5", name: "Harbour Audit Cell", roles: ["safety"], caps: ["risk_review", "evidence_audit"] },
+  { id: "tide-consent", worldId: "tidebreak", call: "HAVEN-6", name: "Coastal Consent Ward", roles: ["safety"], caps: ["consent_gate", "risk_review"] },
+  { id: "tide-rescue", worldId: "tidebreak", call: "LANTERN-7", name: "Blue Lantern Rescue", roles: ["survey", "safety"], caps: ["sonar_rescue", "risk_review"] },
+  { id: "tide-repair", worldId: "tidebreak", call: "CORAL-8", name: "Reef Repair Guild", roles: ["fabrication", "safety"], caps: ["habitat_repair", "evidence_audit"] },
+  { id: "tide-oracle", worldId: "tidebreak", call: "SKY-9", name: "Weather Oracle Cell", roles: ["survey", "safety"], caps: ["terrain_scan", "risk_review"] },
+
+  /* --- I · SIROCCO STATION — the dune sea. Everything here is about a site that
+     will not stay where you left it, so half the roster is survey. ------------ */
+  { id: "sir-transit", worldId: "sirocco", call: "SIROCCO-1", name: "Dune Transit Survey", roles: ["survey"], caps: ["terrain_scan", "route_mapping", "dune_surf"] },
+  { id: "sir-pile", worldId: "sirocco", call: "BATTER-2", name: "Battered Footing Crew", roles: ["fabrication"], caps: ["deep_foundation", "structural_fabrication"] },
+  { id: "sir-spine", worldId: "sirocco", call: "SPINE-3", name: "Windbreak Spine Gang", roles: ["fabrication"], caps: ["structural_fabrication", "scour_control"] },
+  { id: "sir-buried", worldId: "sirocco", call: "CONDUIT-4", name: "Buried Run Section", roles: ["fabrication"], caps: ["service_run", "scour_control"] },
+  { id: "sir-scour", worldId: "sirocco", call: "SLIPFACE-5", name: "Slip-Face Watch", roles: ["survey", "safety"], caps: ["terrain_scan", "risk_review"] },
+  { id: "sir-consent", worldId: "sirocco", call: "GRID-6", name: "First Grid Consent", roles: ["safety"], caps: ["consent_gate", "evidence_audit"] },
+  { id: "sir-lattice", worldId: "sirocco", call: "SUNSPAR-7", name: "Sunspar Lattice Unit", roles: ["fabrication"], caps: ["energy_lattice", "structural_fabrication"] },
+  { id: "sir-audit", worldId: "sirocco", call: "PLUMB-8", name: "Settlement Audit Cell", roles: ["safety"], caps: ["evidence_audit", "risk_review"] },
+  { id: "sir-repair", worldId: "sirocco", call: "REBURY-9", name: "Reburial Repair Guild", roles: ["fabrication", "safety"], caps: ["habitat_repair", "scour_control"] },
+
+  /* --- IV · AERILION GARDEN — the false flora. The charter is to leave it alive,
+     so consent and audit outnumber the trades. -------------------------------- */
+  { id: "aer-canopy", worldId: "aerilion", call: "LEAF-1", name: "Canopy Surveyors", roles: ["survey"], caps: ["terrain_scan", "route_mapping", "biome_assay"] },
+  { id: "aer-root", worldId: "aerilion", call: "ROOT-2", name: "Rootway Engineers", roles: ["fabrication"], caps: ["structural_fabrication", "habitat_repair"] },
+  { id: "aer-graft", worldId: "aerilion", call: "GRAFT-3", name: "Grafted Raft Crew", roles: ["fabrication"], caps: ["shallow_raft", "biome_assay"] },
+  { id: "aer-lumen", worldId: "aerilion", call: "LUMEN-4", name: "Canopy Lighting Cell", roles: ["fabrication"], caps: ["energy_lattice", "service_run"] },
+  { id: "aer-ward", worldId: "aerilion", call: "WARD-5", name: "Grove Safety Ward", roles: ["safety"], caps: ["risk_review", "consent_gate"] },
+  { id: "aer-consent", worldId: "aerilion", call: "HEARTH-6", name: "Habitat Consent Ward", roles: ["safety"], caps: ["consent_gate", "biome_assay"] },
+  { id: "aer-scout", worldId: "aerilion", call: "DAWN-7", name: "Horizon Scouts", roles: ["survey", "safety"], caps: ["terrain_scan", "risk_review"] },
+  { id: "aer-archive", worldId: "aerilion", call: "RUNE-8", name: "Worldtree Archivists", roles: ["safety"], caps: ["evidence_audit", "consent_gate"] },
+  { id: "aer-power", worldId: "aerilion", call: "SUN-9", name: "Sunroot Dynamo", roles: ["fabrication"], caps: ["energy_lattice", "structural_fabrication"] },
+
+  /* --- IX · VERDIGRIS ROADS — jade roads over deep water. Half the roster sails. */
+  { id: "ver-chart", worldId: "verdigris", call: "JADE-1", name: "Jade Road Charters", roles: ["survey"], caps: ["terrain_scan", "route_mapping", "wave_surf"] },
+  { id: "ver-cutter", worldId: "verdigris", call: "SCHOOL-2", name: "Deep Water School", roles: ["survey", "fabrication"], caps: ["loki_cutter", "wave_surf"] },
+  { id: "ver-headland", worldId: "verdigris", call: "HEADLAND-3", name: "Headland Cut Gang", roles: ["fabrication"], caps: ["rock_anchor", "structural_fabrication"] },
+  { id: "ver-mooring", worldId: "verdigris", call: "MOOR-4", name: "Jade Mooring Crew", roles: ["fabrication"], caps: ["marine_works", "structural_fabrication"] },
+  { id: "ver-lattice", worldId: "verdigris", call: "TIDE-5", name: "Roadway Lattice Unit", roles: ["fabrication"], caps: ["energy_lattice", "service_run"] },
+  { id: "ver-audit", worldId: "verdigris", call: "CLEAR-6", name: "Roads Audit Cell", roles: ["safety"], caps: ["evidence_audit", "risk_review"] },
+  { id: "ver-consent", worldId: "verdigris", call: "SHOAL-7", name: "Shallows Consent Ward", roles: ["safety"], caps: ["consent_gate", "risk_review"] },
+  { id: "ver-rescue", worldId: "verdigris", call: "LANTERN-8", name: "Green Lantern Rescue", roles: ["survey", "safety"], caps: ["sonar_rescue", "risk_review"] },
+  { id: "ver-repair", worldId: "verdigris", call: "CORAL-9", name: "Reef Road Repair", roles: ["fabrication", "safety"], caps: ["habitat_repair", "marine_works"] },
+
+  /* --- XI · KOVIR HIGH PASS — an alpine range. Everything is cut into a face, so
+     rock anchoring and avalanche watch are the whole character. --------------- */
+  { id: "kov-pass", worldId: "kovir", call: "PASS-1", name: "High Pass Surveyors", roles: ["survey"], caps: ["terrain_scan", "route_mapping", "snow_surf"] },
+  { id: "kov-bench", worldId: "kovir", call: "BENCH-2", name: "Benching Gang", roles: ["fabrication"], caps: ["rock_anchor", "structural_fabrication"] },
+  { id: "kov-anchor", worldId: "kovir", call: "ANCHOR-3", name: "Cliff Gallery Anchors", roles: ["fabrication"], caps: ["rock_anchor", "deep_foundation"] },
+  { id: "kov-truss", worldId: "kovir", call: "SPAN-4", name: "Timber Truss Spans", roles: ["fabrication"], caps: ["structural_fabrication", "habitat_repair"] },
+  { id: "kov-shed", worldId: "kovir", call: "SHED-5", name: "Avalanche Shed Crew", roles: ["fabrication", "safety"], caps: ["structural_fabrication", "risk_review"] },
+  { id: "kov-watch", worldId: "kovir", call: "CORNICE-6", name: "Cornice Watch", roles: ["survey", "safety"], caps: ["terrain_scan", "risk_review"] },
+  { id: "kov-lattice", worldId: "kovir", call: "SEAM-7", name: "Mineral Seam Lattice", roles: ["fabrication"], caps: ["energy_lattice", "service_run"] },
+  { id: "kov-audit", worldId: "kovir", call: "BEDDING-8", name: "Bedding Audit Cell", roles: ["safety"], caps: ["evidence_audit", "risk_review"] },
+  { id: "kov-consent", worldId: "kovir", call: "CONIFER-9", name: "Conifer Sea Consent", roles: ["safety"], caps: ["consent_gate", "biome_assay"] },
+]);
+
+/** World id -> its nine canonical cells, resolved once. */
+const CANON_BY_WORLD = {};
+for (const c of CANON_CELLS) {
+  (CANON_BY_WORLD[c.worldId] || (CANON_BY_WORLD[c.worldId] = [])).push(c);
+}
+
+/**
+ * Assert the roster against the manifest, and THROW if they disagree.
+ *
+ * This is the one place in the file that refuses to boot on a data error, and it
+ * is deliberate. Every other inconsistency in a build like this degrades quietly —
+ * a missing colour shows the wrong colour, a missing prop shows nothing. A cell
+ * roster that disagrees with the manifest degrades into a monitor that reports
+ * numbers about a workforce that is not there, which is the exact failure this
+ * whole layer exists to prevent. Better a blank screen and a message.
+ */
+function validateCanon() {
+  const errors = [];
+  const inhabited = SYSTEM_MANIFEST.worlds.filter((w) => w.inhabited);
+  const per = SYSTEM_MANIFEST.agentCellsPerInhabitedBody;
+  if (SYSTEM_MANIFEST.visibleBodies !== SYSTEM_MANIFEST.worlds.length) {
+    errors.push("manifest visibleBodies " + SYSTEM_MANIFEST.visibleBodies
+      + " but " + SYSTEM_MANIFEST.worlds.length + " worlds are listed");
+  }
+  if (SYSTEM_MANIFEST.inhabitedBodies !== inhabited.length) {
+    errors.push("manifest inhabitedBodies " + SYSTEM_MANIFEST.inhabitedBodies
+      + " but " + inhabited.length + " worlds carry the flag");
+  }
+  for (const w of inhabited) {
+    const cells = CANON_BY_WORLD[w.id] || [];
+    if (cells.length !== per) {
+      errors.push(w.id + " has " + cells.length + " canonical cells, manifest says " + per);
+    }
+  }
+  // A monitored world must NOT have a roster: the whole point of `inhabited` is
+  // that the avatars carry the fabrication there, and a roster sitting unused is a
+  // roster that will eventually get drawn.
+  for (const w of SYSTEM_MANIFEST.worlds) {
+    if (!w.inhabited && CANON_BY_WORLD[w.id]) {
+      errors.push(w.id + " is monitored but carries a cell roster");
+    }
+  }
+  // Ids and call signs are the keys everything else joins on, so collisions are
+  // fatal rather than cosmetic.
+  const ids = new Set(), calls = new Set();
+  for (const c of CANON_CELLS) {
+    if (ids.has(c.id)) errors.push("duplicate cell id " + c.id);
+    ids.add(c.id);
+    const key = c.worldId + "/" + c.call;
+    if (calls.has(key)) errors.push("duplicate call sign " + key);
+    calls.add(key);
+    if (!CANON_BY_WORLD[c.worldId]) errors.push(c.id + " names no world");
+    if (!c.roles.length) errors.push(c.id + " has no role");
+    if (!c.caps.length) errors.push(c.id + " has no capability");
+  }
+  if (CANON_CELLS.length !== inhabited.length * per) {
+    errors.push("roster is " + CANON_CELLS.length + " cells, manifest implies "
+      + inhabited.length * per);
+  }
+  if (errors.length) {
+    throw new Error("CANON VALIDATION FAILED\n  " + errors.join("\n  "));
+  }
+  return Object.freeze({
+    worlds: SYSTEM_MANIFEST.worlds.length,
+    inhabited: inhabited.length,
+    monitored: SYSTEM_MANIFEST.worlds.length - inhabited.length,
+    cellsPerWorld: per,
+    cells: CANON_CELLS.length,
+    councilSeats: SYSTEM_MANIFEST.council.seatsPerInhabitedBody,
+    capabilities: [...new Set(CANON_CELLS.flatMap((c) => c.caps))].sort(),
+  });
+}
+const CANON = validateCanon();
+
+/**
+ * The nine DISCIPLINE PROFILES. Not a cast — a rate and a hold risk per trade,
+ * which a named canonical cell is bound to when a realm opens. Keeping the two
+ * apart is what stopped every inhabited world showing the same nine anonymous
+ * rows: the profile says how fast piling goes, the cell says who is doing it.
+ */
 const CELL_ROSTER = [
   { tag: "CIV-1", disc: "civil", name: "GRADE & EARTHWORKS", rate: 0.085, holdRisk: 0.10 },
   { tag: "CIV-2", disc: "civil", name: "PILING & FOUNDATIONS", rate: 0.070, holdRisk: 0.14 },
@@ -18392,17 +18568,97 @@ const Works = {
   records: [],
   tally: { phasesDone: 0, holdsRaised: 0, holdsCleared: 0, handedOver: 0 },
   events: [],
-  _holdSeed: 0,
 
   init(ctx) {
     this.ctx = ctx;
+    this.reset();
+  },
+
+  /**
+   * Start a fresh world: clear everything, including the lifetime tallies.
+   *
+   * Split out of `init` because it turned out there was no way to do this. The
+   * tallies are session-lifetime by design — the ledger reports masses raised
+   * across the whole run, not per realm — but that meant a re-seeded world
+   * inherited the previous one's counters, and since those counters are part of
+   * the world checksum, the same seed could not reproduce the same digest twice in
+   * one session. That is not a cosmetic problem: it is the difference between a
+   * reproducibility claim that holds and one that only looks like it does.
+   */
+  reset() {
     this.style = fabStyle(Biome.key);
     Steering.init();
-    this.cells = CELL_ROSTER.map((r, i) => ({
-      ...r, index: i, state: CELL_IDLE, item: null, progress: 0,
-      done: 0, holdT: 0, holdWhy: "", idleT: 0,
-    }));
-    this.council = COUNCIL_SEATS.map((s) => ({ ...s, hold: false, why: "", cleared: false }));
+    this.realm = null;
+    this.inhabited = false;
+    this.queue.length = 0;
+    this.records.length = 0;
+    this.events.length = 0;
+    this.tally = { phasesDone: 0, holdsRaised: 0, holdsCleared: 0, handedOver: 0 };
+    this.cells = this._crew(BIOME_REALM[Biome.key]);
+    this.council = COUNCIL_SEATS.map((s) => ({ ...s, hold: false, why: "",
+      cleared: false, evidence: [], seen: 0 }));
+  },
+
+  /**
+   * The workforce for a world: its named canonical cells, each bound to one
+   * discipline profile.
+   *
+   * The binding is by INDEX, and that is the honest simplification — nine cells
+   * against nine trades on every inhabited world, so the pairing is fixed and
+   * reproducible rather than matched on capability. Matching properly needs a
+   * requirement per phase to match against, which is the task-graph work; until
+   * that exists, a stable index pairing is better than a plausible-looking
+   * capability search that would silently reorder when a cap string changed.
+   *
+   * A monitored world returns an empty crew, which is what makes `inhabited`
+   * load-bearing: the avatars carry the fabrication and the panel says so.
+   */
+  _crew(world) {
+    if (!world || !world.inhabited) return [];
+    const canon = CANON_BY_WORLD[world.id] || [];
+    return canon.map((c, i) => {
+      const prof = CELL_ROSTER[i % CELL_ROSTER.length];
+      return {
+        // identity — the canonical cell
+        id: c.id, call: c.call, canonName: c.name,
+        roles: c.roles, caps: c.caps, worldId: c.worldId,
+        // profile — the trade it is working
+        tag: c.call, disc: prof.disc, name: prof.name,
+        rate: prof.rate, holdRisk: prof.holdRisk,
+        index: i,
+        // runtime
+        state: CELL_IDLE, item: null, progress: 0, done: 0,
+        holdT: 0, holdWhy: "", idleT: 0,
+        /**
+         * Fatigue and skill, and both are real rather than badges: fatigue accrues
+         * while a cell works and decays while it does not, and it SLOWS the rate;
+         * skill rises with every phase closed and speeds it. A crew that has been
+         * on shift all realm is measurably slower than one that just came on, and a
+         * crew that has closed eleven foundations is measurably faster than one on
+         * its first. That is the whole reason to model an agent as an entity rather
+         * than as a row: the numbers have to move.
+         */
+        fatigue: 0, skill: 0,
+        /** Where it is working, so the monitor can place it. */
+        atX: 0, atZ: 0,
+      };
+    });
+  },
+
+  /**
+   * The multiplier a cell's own condition applies to its trade rate.
+   *
+   * Bounded on both sides on purpose. Fatigue can cost at most a third of the
+   * rate, because a crew that grinds to a halt is a stall the operator cannot fix
+   * and would read as a bug; skill can win at most a quarter, because a monitor
+   * where an experienced crew is twice as fast makes the early realms look broken
+   * in hindsight. Both curves are square-rooted so the first hour of either
+   * matters more than the fifth.
+   */
+  condition(c) {
+    const tired = 1 - 0.33 * Math.sqrt(clamp01(c.fatigue));
+    const skilled = 1 + 0.25 * Math.sqrt(clamp01(c.skill));
+    return tired * skilled;
   },
 
   emit(kind, title, sub) { this.events.push({ kind, title, sub }); },
@@ -18425,26 +18681,33 @@ const Works = {
     Steering.couple("pilot", "forming", 1.6);
     this.queue.length = 0;
     this.records.length = 0;
-    for (const c of this.cells) {
-      c.state = CELL_IDLE; c.item = null; c.progress = 0; c.done = 0;
-      c.holdT = 0; c.holdWhy = ""; c.idleT = 0;
+    // A different world means a different crew, by name. Rebuilding rather than
+    // resetting is the point of moving identity onto the world: the nine cells on
+    // the alpine pass are not the nine on the dune sea with their counters zeroed.
+    this.cells = this._crew(plan.realm);
+    for (const s of this.council) {
+      s.hold = false; s.why = ""; s.cleared = false; s.evidence = []; s.seen = 0;
     }
-    for (const s of this.council) { s.hold = false; s.why = ""; s.cleared = false; }
-    this._holdSeed = (plan.index + 1) * 7919;
+
     this.emit("works-open",
       this.inhabited ? "NINE CELLS ON STATION" : "NO RESIDENT CELLS",
       (this.inhabited
-        ? plan.realm.seat + " · " + SYSTEM_MANIFEST.agentCellsPerInhabitedBody
-          + " AGENT CELLS · " + this.council.length + " COUNCIL SEATS"
+        ? plan.realm.seat + " · " + this.cells.length + " NAMED CELLS · "
+          + this.cells.map((c) => c.call).slice(0, 3).join(" ") + " …"
         : plan.realm.seat + " · MONITORED WORLD · AVATAR-CREWED")
       + " · " + this.style.label);
   },
 
-  /** Deterministic per-realm randomness, so a realm's holds are reproducible. */
-  _rand() {
-    this._holdSeed = (this._holdSeed * 1103515245 + 12345) & 0x7fffffff;
-    return this._holdSeed / 0x7fffffff;
-  },
+  /**
+   * Randomness for hold draws, on its own named stream.
+   *
+   * It used to be a private LCG seeded from the realm index, which was
+   * reproducible per realm but not reproducible per WORLD — reseeding the sim
+   * could not reach it, so a replay diverged the moment a hold came up. Routing
+   * it through the shared named streams means one reseed governs everything, and
+   * the stream name is per realm so opening realm IV twice gives the same holds.
+   */
+  _rand() { return Rng.next("works.hold." + (this.realm ? this.realm.id : "none")); },
 
   /**
    * The avatars have finished forming a mass. Hand its eleven phases to the works.
@@ -18540,6 +18803,10 @@ const Works = {
         continue;
       }
       if (!c.item) {
+        // Rest. Twice as fast as it accrues, so a crew that stands down for four
+        // minutes comes back fresh — which is what makes a starved cell a cost the
+        // operator can see paying off later rather than only a red row.
+        c.fatigue = Math.max(0, c.fatigue - dt / 480);
         const item = this._claim(c);
         if (!item) {
           // Starved rather than idle: there is work on the books, it is just
@@ -18573,10 +18840,20 @@ const Works = {
         c.item = null;
         continue;
       }
-      this._advance(item, c.rate * rate * dt / item.rec.weight, c);
+      // The cell's own condition scales its trade rate. This is where fatigue and
+      // skill stop being labels: a tired crew is measurably slower and a practised
+      // one measurably faster, and both are visible in the phase clock.
+      this._advance(item, c.rate * this.condition(c) * rate * dt / item.rec.weight, c);
       c.progress = item.progress;
+      // Fatigue accrues while working. Sixteen minutes of continuous work reaches
+      // the cap, which is roughly a realm — so a crew that carries a whole charter
+      // ends it visibly slower than it started.
+      c.fatigue = clamp01(c.fatigue + dt / 960);
       if (item.progress >= 1) {
         c.done++; c.item = null; c.state = CELL_IDLE;
+        // Skill is earned by closing work, not by being on station. Eleven closes
+        // reaches the cap, which is one mass taken end to end.
+        c.skill = clamp01(c.skill + 1 / 11);
       }
     }
     this._score();
@@ -19340,6 +19617,213 @@ function drawJLens(canvas) {
     + " · QUIETEST " + st.quietest.id.toUpperCase(), ox, by + barH + 2);
 }
 
+/* =========================================================================
+ * DETERMINISM — named streams, a fixed authoritative tick, and a checksum.
+ *
+ * The integration report's honest boundary was this: "the integration clock is
+ * fixed-step for audit purposes, but the world still runs in the browser's
+ * variable render loop." That is the gap this closes, and it is worth closing for
+ * a reason that has nothing to do with tidiness — an autonomous monitor whose
+ * simulation depends on frame timing cannot be replayed, cannot be compared
+ * against itself, and cannot support the claim that anything it reports is
+ * reproducible. Every other audit feature is built on sand until this holds.
+ *
+ * Three pieces, and each fixes a specific way determinism breaks:
+ *
+ *   NAMED STREAMS   One shared PRNG is the classic trap: adding a call in the
+ *                   pilot silently reshuffles every hold the works will raise,
+ *                   because they were drawing from the same sequence. A stream
+ *                   per subsystem makes each sequence independent of every other,
+ *                   so a change in one cannot perturb another.
+ *
+ *   FIXED TICK      The authoritative simulation advances in equal steps off an
+ *                   accumulator; rendering stays variable and reads the result.
+ *                   A 30 fps machine and a 144 fps machine then simulate the same
+ *                   world, which is not true of anything scaled by a frame delta.
+ *
+ *   CHECKSUM        A digest over the authoritative state, so "reproducible" is a
+ *                   measurement rather than a claim. Presentation values are
+ *                   excluded deliberately: a camera position that drifts in the
+ *                   last bit is not a simulation difference, and folding it in
+ *                   would make the digest useless for the thing it is for.
+ * ========================================================================= */
+
+/** FNV-1a over a string. Small, fast, and adequate for a state digest. */
+function fnv1a(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+const Rng = {
+  /** The world seed. Every stream is derived from it and its own name. */
+  seed: 0x4a4c4d20,
+  _streams: new Map(),
+  /** Draws taken, per stream. Part of the checksum: two runs that agree on state
+   *  but disagree on how many draws it took are not the same run. */
+  _draws: new Map(),
+
+  reseed(seed) {
+    this.seed = (seed >>> 0) || 1;
+    this._streams.clear();
+    this._draws.clear();
+  },
+
+  /**
+   * xorshift32, one state per named stream.
+   *
+   * The name is hashed into the initial state rather than being an index, so
+   * adding a stream cannot renumber the others — which is the same failure the
+   * named streams exist to prevent, one level up.
+   */
+  next(name) {
+    let x = this._streams.get(name);
+    if (x === undefined) {
+      x = (this.seed ^ parseInt(fnv1a(name), 16)) >>> 0;
+      if (x === 0) x = 0x9e3779b9;
+    }
+    x ^= x << 13; x >>>= 0;
+    x ^= x >>> 17;
+    x ^= x << 5; x >>>= 0;
+    if (x === 0) x = 0x9e3779b9;
+    this._streams.set(name, x);
+    this._draws.set(name, (this._draws.get(name) || 0) + 1);
+    return x / 4294967296;
+  },
+
+  range(name, a, b) { return a + (b - a) * this.next(name); },
+  int(name, n) { return Math.min(n - 1, (this.next(name) * n) | 0); },
+  chance(name, p) { return this.next(name) < p; },
+  /** Pick from an array. */
+  pick(name, arr) { return arr[this.int(name, arr.length)]; },
+
+  /** Every stream's state and draw count, folded into one digest. */
+  digest() {
+    const names = [...this._streams.keys()].sort();
+    let s = "";
+    for (const n of names) {
+      s += n + ":" + this._streams.get(n) + ":" + (this._draws.get(n) || 0) + ";";
+    }
+    return fnv1a(s);
+  },
+
+  /** For the inspector: which streams exist and how hard each is being drawn. */
+  report() {
+    const names = [...this._streams.keys()].sort();
+    return names.map((n) => ({ name: n, draws: this._draws.get(n) || 0 }));
+  },
+};
+
+const Sim = {
+  /** 20 Hz. Fast enough that a hold or a phase closes on the frame it looks like
+   *  it does, slow enough that a 30 fps machine never runs more than one catch-up
+   *  step per frame. */
+  HZ: 20,
+  DT: 1 / 20,
+  tick: 0,
+  acc: 0,
+  /** Ticks run in the current frame, for the perf panel. */
+  lastSteps: 0,
+  /** Wall-clock seconds of simulation shed because the frame budget ran out. */
+  dropped: 0,
+  /** Ticks the operator has asked to run flat out, for tests and for replay. */
+  _forced: 0,
+
+  reset() {
+    this.tick = 0; this.acc = 0; this.lastSteps = 0; this.dropped = 0;
+    this._forced = 0;
+  },
+
+  /**
+   * Advance the authoritative clock and run `step` once per fixed tick.
+   *
+   * The two clamps are both deliberate. `min(dt, 0.25)` stops a backgrounded tab
+   * from handing over a sixty-second delta; the eight-step cap stops a slow frame
+   * from spiralling, because running more steps makes the next frame slower still.
+   * Both mean the world can LOSE time, and losing time is the right trade for a
+   * monitor — a frozen picture is worse than a world that skipped a second, and
+   * pretending otherwise is how a simulation loop becomes unrecoverable.
+   */
+  advance(dt, step) {
+    this.acc += Math.min(Math.max(dt, 0), 0.25);
+    let n = 0;
+    while (this.acc >= this.DT && n < 8) {
+      this.acc -= this.DT;
+      this.tick++;
+      step(this.DT);
+      n++;
+    }
+    if (n >= 8 && this.acc >= this.DT) {
+      this.dropped += this.acc;
+      this.acc = 0;
+    }
+    this.lastSteps = n;
+    return n;
+  },
+
+  /** Run exactly n ticks, ignoring wall time. Replay and determinism tests. */
+  run(n, step) {
+    for (let i = 0; i < n; i++) { this.tick++; step(this.DT); }
+    this._forced += n;
+  },
+
+  /** Simulated seconds elapsed, which is the only clock the works should read. */
+  get seconds() { return this.tick * this.DT; },
+};
+
+/**
+ * A digest over the authoritative world state.
+ *
+ * What is IN here is the contract: the works' queue and records, every cell's
+ * state, the council's rulings, the pilot's position in its plan, the steering
+ * field, and the RNG streams. What is deliberately OUT is everything a renderer
+ * owns — camera, cloth, spray, wake, the ocean surface, the flora placement. A
+ * mote's position drifting in the last bit is not a simulation difference, and
+ * folding it in would make the digest useless for what it is for.
+ *
+ * Floats are quantised before hashing. Two runs of the same integrator on the
+ * same machine agree bit-for-bit, but the digest is also meant to survive being
+ * compared across a rebuild, and six decimal places is far tighter than anything
+ * the simulation acts on.
+ */
+function worldChecksum(pilot) {
+  const q = (v) => (Math.round((v || 0) * 1e6) / 1e6).toString();
+  const parts = [];
+  parts.push("t" + Sim.tick);
+  parts.push("b" + Biome.key);
+  // ---- works ----
+  parts.push("W" + Works.tally.phasesDone + "," + Works.tally.holdsRaised + ","
+    + Works.tally.holdsCleared + "," + Works.tally.handedOver);
+  parts.push("Q" + Works.queue.length + "," + Works.records.length);
+  for (const r of Works.records) {
+    parts.push("r" + r.label + ":" + r.phase + ":" + (r.done ? 1 : 0) + ":" + q(r.weight));
+  }
+  for (const it of Works.queue) {
+    parts.push("q" + it.phaseIndex + ":" + q(it.progress) + ":" + (it.claimed ? 1 : 0));
+  }
+  for (const c of Works.cells) {
+    parts.push("c" + c.tag + ":" + c.state + ":" + q(c.progress) + ":" + c.done
+      + ":" + q(c.holdT) + ":" + q(c.fatigue) + ":" + q(c.skill));
+  }
+  for (const s of Works.council) {
+    parts.push("s" + s.tag + ":" + (s.hold ? 1 : 0) + ":" + (s.cleared ? 1 : 0));
+  }
+  // ---- pilot ----
+  if (pilot) {
+    parts.push("P" + pilot.realmIndex + ":" + pilot.taskIndex + ":" + pilot.state
+      + ":" + q(pilot.stateT) + ":" + pilot.queue.length + ":" + pilot.log.length);
+  }
+  // ---- steering ----
+  for (let i = 0; i < STEER_N * STEER_N; i++) parts.push(q(Steering.A[i]));
+  parts.push("p" + Steering.pathology.id);
+  // ---- randomness ----
+  parts.push("R" + Rng.digest());
+  return fnv1a(parts.join("|"));
+}
+
 const HOLD_REASONS = [
   "AWAITING VENDOR DATA",
   "WELD PROCEDURE NOT QUALIFIED",
@@ -19802,7 +20286,7 @@ class Pilot {
     if (this.castCool <= 0 && S.showSpells && !spec.isPad) {
       const phase = a.t / hold;
       input.spellPressed = phase < 0.22 ? 4 : phase < 0.62 ? 1 : 3;
-      this.castCool = 1.5 + Math.random() * 0.9;
+      this.castCool = Rng.range("pilot.cast", 1.5, 2.4);
     }
 
     // Sand thrown off the footing while the mass is coming up.
@@ -19827,7 +20311,8 @@ class Pilot {
     }
     // One beam per big mass, on the way up. The trauma sells the mass of it.
     if (this.beamCool <= 0 && !spec.isPad && spec.height > 40 && a.t > hold * 0.45) {
-      c.beams.spawn(m.x + (Math.random() - 0.5) * 8, m.z + (Math.random() - 0.5) * 8, 1.1);
+      c.beams.spawn(m.x + Rng.range("pilot.beam", -4, 4),
+        m.z + Rng.range("pilot.beam", -4, 4), 1.1);
       c.rig.addTrauma(0.12);
       c.suit.flash = 1.0;
       this.beamCool = 6;
@@ -19904,7 +20389,7 @@ class Pilot {
     }
     if (this.castCool <= 0 && S.showSpells) {
       input.spellPressed = 1;
-      this.castCool = 2.4 + Math.random() * 1.4;
+      this.castCool = Rng.range("pilot.cast", 2.4, 3.8);
     }
     this.focus.set(tx, c.terrain.heightAt(tx, tz) + 6, tz);
     this.hasFocus = true;
@@ -21070,10 +21555,23 @@ async function main() {
       const msg = Steering.intervene();
       Works.emit("steer", "STEERING · " + Steering.pathology.label, msg);
     }
-    pilot.update(dt);
-    // The cells fabricate after the pilot has founded whatever it founded this
-    // frame, so a mass handed over on this tick is already on the books.
-    Works.update(dt, S.buildRate);
+    /* ---- the authoritative tick --------------------------------------------
+     * The pilot, the works and the steering field advance in FIXED steps off an
+     * accumulator, not on the frame delta. That is what makes the simulation
+     * reproducible: a 30 fps machine and a 144 fps machine now run the same world,
+     * and the same seed replays to the same checksum. Rendering stays variable and
+     * reads whatever the last tick produced — which is correct, because a monitor
+     * is a view of a simulation rather than the simulation itself.
+     *
+     * The director is NOT in here. It writes the look channel and nothing else, so
+     * it is presentation, and running a camera at 20 Hz would be visible.
+     * -------------------------------------------------------------------------- */
+    Sim.advance(dt, (fixed) => {
+      pilot.update(fixed);
+      // The cells fabricate after the pilot has founded whatever it founded this
+      // tick, so a mass handed over now is already on the books.
+      Works.update(fixed, S.buildRate);
+    });
     director.update(dt);
 
     // ---- discrete actions -------------------------------------------------
@@ -21230,6 +21728,7 @@ async function main() {
     structures, conduits, pilot, director, ledger, REALMS, SYSTEM_MANIFEST,
     Works, FAB_PHASES, FAB_STYLES, fabStyle, CELL_ROSTER, COUNCIL_SEATS,
     Steering, STEER_SYSTEMS, PATHOLOGIES, jacobiEigen, spectrum,
+    Sim, Rng, worldChecksum, fnv1a, CANON, CANON_CELLS, CANON_BY_WORLD, validateCanon,
     ObjectSculptSpec, NexusIterationSpec, planRealm,
     flora, BIOME_FLORA, ambient, BIOME_DRIFT, BIOME_FLIERS,
     settlement, BIOME_KIT, dressRealm,
