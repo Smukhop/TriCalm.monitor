@@ -597,6 +597,29 @@ function noise1(x) {
   const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f);
   return hash1(i) * (1 - u) + hash1(i + 1) * u;
 }
+function hash2(x, y) {
+  const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+/** Value noise on the plane, 0..1. */
+function noise2(x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix, fy = y - iy;
+  const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+  const a = hash2(ix, iy), b = hash2(ix + 1, iy);
+  const c = hash2(ix, iy + 1), d = hash2(ix + 1, iy + 1);
+  return (a * (1 - ux) + b * ux) * (1 - uy) + (c * (1 - ux) + d * ux) * uy;
+}
+/**
+ * Three octaves, 0..1. This is the scatter's clumping mask: three octaves is
+ * enough for a forest to form stands with clearings between them, which is the
+ * single difference between a placed forest and a sprinkled one.
+ */
+function fbm2(x, y) {
+  let a = 0.5, f = 1, s = 0, n = 0;
+  for (let i = 0; i < 3; i++) { s += noise2(x * f, y * f) * a; n += a; a *= 0.5; f *= 2.07; }
+  return s / n;
+}
 
 /* --------------------------------------------------------------- loading */
 const boot = {
@@ -644,6 +667,8 @@ const S = {
   surgeIntervalMin: 26, surgeIntervalMax: 64,
   showVessel: true, vesselSpeed: 1.0, vesselBuoyancy: true, vesselWake: true,
   showWorldDressing: true,
+  // flora
+  showFlora: true, floraDensity: 1.0,
   // spells
   showSpells: true, spellLight: 1.0, spellSpray: 1.0, waterDepthTint: 1.0,
   // post
@@ -757,10 +782,12 @@ const SCHEMA = [
   { group: "Biosphere", items: [
     { k: "biome", l: "Terraform", t: "e",
       opts: ["glacis", "verdant", "ochre", "magma", "abyss", "regolith",
-             "tidal", "shoal", "verdigris", "floe"] },
+             "tidal", "shoal", "verdigris", "floe", "kovir"] },
     { k: "terraformRate", l: "Dissolve rate", t: "f", min: 0.1, max: 4, step: 0.05 },
     { k: "veinGlow", l: "Vein glow", t: "f", min: 0, max: 3, step: 0.01 },
     { k: "biomeAtmos", l: "Biome atmosphere", t: "b" },
+    { k: "showFlora", l: "Flora & scatter", t: "b" },
+    { k: "floraDensity", l: "Scatter density", t: "f", min: 0, max: 1.6, step: 0.05 },
   ] },
   { group: "False Earth", items: [
     { k: "showPlanet", l: "Planet", t: "b" },
@@ -1050,9 +1077,67 @@ const BIOMES = {
            deep: [0.008, 0.030, 0.062], shal: [0.100, 0.340, 0.520],
            surf: [0.940, 0.975, 1.000], sand3: [0.520, 0.620, 0.680] },
   },
+  /**
+   * KOVIR — the northern mineral range.
+   *
+   * The one biome in the set whose subject is *verticality*: serrated ridgelines
+   * with bedding planes showing on every steep face, a dark conifer sea filling
+   * the valley and climbing the lower slopes, snow holding on the upper
+   * elevations and the ledges, and residual patches in the shade even down low.
+   *
+   * The palette is the reference plate's, and it is a mineral palette rather than
+   * a rock-grey one: reddish-brown stratified stone against cold snow, with the
+   * greens coming almost entirely from the flora layer rather than from the
+   * ground. That division matters — painting the valley green in `base` is what
+   * makes a forest world read as a coloured slope, which is precisely the failure
+   * this biome exists to avoid.
+   */
+  kovir: {
+    name: "KOVIR", sub: "alpine strata · conifer sea", ui: "#a9c4d8",
+    // Snow-dusted scree, not snowfield: bright but grey-warm, so the true snow
+    // on the peaks still reads as brighter than the ground you are standing on.
+    base: [0.402, 0.418, 0.448], deep: [0.238, 0.246, 0.268],
+    liquid: [0.140, 0.235, 0.290], rock: [0.196, 0.128, 0.098],
+    loose: [0.512, 0.520, 0.545], emis: [0.62, 0.78, 0.95],
+    sssA: [0.86, 0.90, 0.98], sssB: [0.42, 0.52, 0.66],
+    accent: [0.66, 0.80, 0.94],
+    // Wet-looking stone: low roughness on the rock channel is what makes the
+    // strata catch a rim of sky along every ledge.
+    rough: [0.70, 0.10, 0.036, 0.040],
+    mat: [0.62, 0.42, 0.55, 0.10],
+    // Mineral seams rather than biolume: low frequency, thin, sparse, cool.
+    vein: [0.18, 2.2, 0.42, 0.14],
+    // Mist sits in the mid-ground of the reference plate and the far peaks stay
+    // craggy through it, so the fog is LOW and the aerial term is near neutral —
+    // heavy values on both is what turns a range into a silhouette. The warm
+    // multiplier is the lowest in the set because this is a cold northern light,
+    // and `fine` is nearly off because the fine layer is wind sastrugi and this
+    // ground is rock.
+    atmos: { fog: 0.62, aerial: 0.95, warm: 0.34, ambient: 1.22, wind: 1.15,
+             range: 1.35, fine: 0.22 },
+    regime: [0.0, 0.0, 0.0, 0.0],
+    alpine: [1.0, 118],
+    // The snowline starts a little under half way up the relief and feathers over
+    // twenty-four metres, and it only lies where the landform is gentler than
+    // about two thirds flat — so the faces stay bare rock, the ledges hold white,
+    // and the bedding shows as horizontal striping on every peak.
+    snowline: [56, 24, 0.66, 1.0],
+    sea: { q: -1 },
+  },
 };
+/** Strength 0. The shader early-outs on it, so this genuinely costs nothing. */
+const NO_SNOWLINE = [0, 1, 1, 0];
+/*
+ * Every preset carries a snowline channel, because the palette lerp iterates a
+ * fixed key list and a missing key is a crash rather than a default. Filling it
+ * here rather than writing it into eleven tables means adding a world cannot
+ * forget it, and it keeps the tables about what is genuinely per-world.
+ */
+for (const k in BIOMES) {
+  if (!BIOMES[k].snowline) BIOMES[k].snowline = NO_SNOWLINE.slice();
+}
 const BIOME_ORDER = ["glacis", "verdant", "ochre", "magma", "abyss", "regolith",
-  "tidal", "shoal", "verdigris", "floe"];
+  "tidal", "shoal", "verdigris", "floe", "kovir"];
 
 /* =========================================================================
  * Traversal media.
@@ -1140,7 +1225,7 @@ const MEDIA_ORDER = ["snow", "ice", "sand", "basalt", "water"];
 const BIOME_MEDIUM = {
   glacis: "snow", verdant: "sand", ochre: "sand", magma: "basalt",
   abyss: "ice", regolith: "sand", tidal: "sand", shoal: "sand",
-  verdigris: "sand", floe: "ice",
+  verdigris: "sand", floe: "ice", kovir: "snow",
 };
 
 /** Depth at which the board stops reading the bed and starts reading the swell. */
@@ -1183,8 +1268,8 @@ const Medium = {
  * ---------------------------------------------------------------------- */
 const SYSTEM_MANIFEST = Object.freeze({
   id: "jaganaught-loki-system-v5",
-  visibleBodies: 10,
-  inhabitedBodies: 4,
+  visibleBodies: 11,
+  inhabitedBodies: 5,
   agentCellsPerInhabitedBody: 9,
   council: { overlay: "Minato Council", seatsPerInhabitedBody: 3, duplicates: false },
   worlds: [
@@ -1208,6 +1293,8 @@ const SYSTEM_MANIFEST = Object.freeze({
       traversal: "Loki cutter / wave-surf", charter: "hold the jade roads · school the deep water" },
     { id: "floe", biome: "floe", numeral: "X", seat: "FLOE MERIDIAN", inhabited: false,
       traversal: "Loki cutter / rime-surf", charter: "set the meridian · hand the system over" },
+    { id: "kovir", biome: "kovir", numeral: "XI", seat: "KOVIR HIGH PASS", inhabited: true,
+      traversal: "boots / snow-surf", charter: "cut the pass · log the conifer sea without felling it" },
   ],
 });
 /**
@@ -1317,7 +1404,7 @@ const Biome = {
   blend: 1,
   live: null,
   _keys3: ["base", "deep", "liquid", "rock", "loose", "emis", "sssA", "sssB", "accent"],
-  _keys4: ["rough", "mat", "vein"],
+  _keys4: ["rough", "mat", "vein", "snowline"],
 
   init() {
     const p = BIOMES[this.key];
@@ -1393,6 +1480,8 @@ const Biome = {
     UB.uBioRough.value.set(L.rough[0], L.rough[1], L.rough[2], L.rough[3]);
     UB.uBioMat.value.set(L.mat[0], L.mat[1], L.mat[2], L.mat[3] * S.veinGlow);
     UB.uBioVein.value.set(L.vein[0], L.vein[1], L.vein[2], L.vein[3]);
+    const sl = L.snowline;
+    UB.uSnowline.value.set(sl[0], sl[1], sl[2], sl[3]);
   },
 
   /** The SH bake tints by the ground the sky is bouncing off. */
@@ -2219,9 +2308,56 @@ vec2 spireField(vec2 p,float w,float amount){
   return vec2(hSum*amount,mask*clamp(amount*1.4,0.0,1.0));
 }
 
-vec2 terrainRegime(vec2 p,float w,float amp,vec4 rg){
+vec2 terrainRegime(vec2 p,float w,float amp,vec4 rg,vec2 al){
   float h=terrainMacro(p,w,amp);
   float extraMask=0.0;
+
+  // ---- alpine -----------------------------------------------------------
+  // Serrated ridgelines with visible bedding. The reference is a northern
+  // mineral range: knife-edge crests, deep forested valleys, stratified rock
+  // faces. Three things make that read, and none of them is more octaves of the
+  // same fBm the other regimes already use.
+  //
+  //  1. A ridged multifractal. Folding each octave at its zero crossing turns
+  //     smooth noise into creases, and creases at successive scales ARE a
+  //     weathered ridgeline. Squaring the result pushes the valleys flat and
+  //     leaves the crests sharp, so a valley floor is walkable ground rather
+  //     than the bottom of a V.
+  //  2. Bedding planes. A sine on the height itself, faded in with altitude,
+  //     lays horizontal strata across every steep face and vanishes on flat
+  //     ground — which is exactly where real bedding shows and where it does not.
+  //  3. A gentler large swell retained underneath, so the range sits in
+  //     country rather than rising straight off a plane.
+  if(al.x>0.001){
+    // 620 m between crests: two ridgelines across the play area, so a valley is a
+    // valley you walk the length of rather than a field of hills. Five octaves at
+    // a low gain, not six at a high one — the high octaves of a ridged fractal
+    // are what turn a mountain into crumpled paper, and the crest detail the
+    // reference actually shows comes from the bedding term below instead.
+    mat2 ma=windMat(w,1.0,1.0,620.0);
+    vec3 rd=ridgedd(ma*p,5,2.09,0.44);
+    // A high power sharpens the crests and flattens the valley floors together,
+    // which is the profile of a glaciated range: knife-edge above, U below.
+    float ridge=pow(clamp(rd.x,0.0,1.0),1.95);
+    float alp=ridge*al.y;
+    // Valley bias: subtracting a constant before the clamp above would flatten
+    // the peaks too, so the datum shift happens here instead.
+    alp-=al.y*0.055;
+    // Bedding, faded in over the first fifth of the relief.
+    // Roughly nine beds over the relief. Spacing tied to the relief rather than
+    // fixed, so a taller range gets thicker beds instead of more of them.
+    float bedK=9.0*6.2831853/max(al.y,1.0);
+    float band=sin(alp*bedK)*0.5+0.5;
+    // Second, finer bedding at an incommensurate rate, so the strata are not one
+    // repeating stripe.
+    band=band*0.68+(sin(alp*bedK*2.63+1.7)*0.5+0.5)*0.32;
+    alp+=(band-0.5)*4.4*smoothstep(0.0,al.y*0.18,alp);
+    // Talus: the base of every face collects its own debris, which is a small
+    // high-frequency lift that only exists on the lower slopes.
+    alp+=fbmDamped(p*0.038,3,2.13,0.5,0.7).x*2.2
+        *(1.0-smoothstep(0.0,al.y*0.45,alp));
+    h=mix(h,alp+h*0.22,al.x);
+  }
 
   // ---- shelf ------------------------------------------------------------
   // tanh on the height is a soft vertical compressor. Around zero — which is
@@ -2310,6 +2446,7 @@ uniform vec3 uBioSSSB;      // deep-path scatter tint
 uniform vec3 uBioAccent;    // beams, waves, suit trim adopt this
 uniform vec4 uBioRough;     // (base, liquid, f0 base, f0 liquid)
 uniform vec4 uBioMat;       // (thickness, diffuse wrap, sparkle gain, emissive gain)
+uniform vec4 uSnowline;     // (start m, feather m, lie threshold on geoN.y, strength)
 uniform vec4 uBioVein;      // (scale, sharpness, flow speed, liquid coverage)
 
 // Safe fallbacks. A material that includes this bank but was never handed the
@@ -4157,6 +4294,12 @@ const UB = {
   uBioAccent: { value: new THREE.Vector3(0.37, 0.85, 1.0) },
   uBioRough: { value: new THREE.Vector4(0.62, 0.07, 0.028, 0.045) },
   uBioMat: { value: new THREE.Vector4(1.0, 0.62, 1.0, 0.0) },
+  /**
+   * Altitude snow, as (start, feather, lie threshold, strength). Strength 0 is the
+   * default and means the world has no snowline — which is the correct answer for
+   * a dune sea, a basalt shelf and a world that is already entirely snow.
+   */
+  uSnowline: { value: new THREE.Vector4(0, 1, 1, 0) },
   uBioVein: { value: new THREE.Vector4(0.09, 2.4, 1.0, 0.0) },
   // ---- cosmic wave field (see G.waves) ----
   uWaveA: { value: null },   // filled by WaveField
@@ -4218,6 +4361,7 @@ const UB = {
 const ALWAYS_SHARED = [
   "uBioBase", "uBioDeep", "uBioLiquid", "uBioRock", "uBioLoose", "uBioEmis",
   "uBioSSSA", "uBioSSSB", "uBioAccent", "uBioRough", "uBioMat", "uBioVein",
+  "uSnowline",
   "uWaveA", "uWaveB", "uWaveCount", "uWaveGain", "uClock",
   // The sea is read by nine programs. Listing it at nine call sites is nine
   // places to forget one, and a forgotten sea uniform is a shoreline that
@@ -4258,11 +4402,12 @@ uniform float uSize;
 uniform float uWind;
 uniform float uAmp;
 uniform vec4 uRegime;
+uniform vec2 uAlpine;
 void main(){
   vec2 p=uOrigin+vUV*uSize;
   // The regime operators run here rather than per frame, so the CPU mirror and
   // the vertex shader cannot disagree about where a plateau edge is.
-  vec2 reg=terrainRegime(p,uWind,uAmp,uRegime);
+  vec2 reg=terrainRegime(p,uWind,uAmp,uRegime,uAlpine);
   float h=reg.x;
   // Rock displaces snow upward; snow re-accumulates on the flatter faces, which
   // the snow material resolves from the mask.
@@ -4374,10 +4519,11 @@ class Heightfield {
     this._raw = null;
   }
 
-  bake(regime) {
+  bake(regime, alpine) {
     const r = this.renderer;
     const wind = (S.windDirection * Math.PI) / 180;
     const rg = regime || [0, 0, 0, 0];
+    const al = alpine || [0, 0];
 
     const hb = new Pass("heightBake", HEIGHT_BAKE_FRAG, {
       uOrigin: { value: new THREE.Vector2(this.originX, this.originZ) },
@@ -4385,6 +4531,9 @@ class Heightfield {
       uWind: { value: wind },
       uAmp: { value: S.macroHeightScale },
       uRegime: { value: new THREE.Vector4(rg[0], rg[1], rg[2], rg[3]) },
+      // Relief is scaled by the same slider the macro is, or a range that
+      // doubles in height would leave its valley floor where it was.
+      uAlpine: { value: new THREE.Vector2(al[0], al[1] * S.macroHeightScale) },
     });
     hb.render(r, this.heightRT);
 
@@ -5087,6 +5236,46 @@ void main(){
     thickness=mix(thickness,0.0,rockExposed);
   }
 
+  /* ---------------------------------------------------------------- snowline
+   * Snow by ALTITUDE, laid over whatever the ground already is.
+   *
+   * This runs after the rock so that a snowfield covers an exposed face rather
+   * than being covered by it, which is the right order: on a mountain the snow is
+   * the newest thing on the slope.
+   *
+   * Three terms decide whether a point holds snow, and all three matter:
+   *
+   *   altitude   a soft band, because a snowline is a fade of tens of metres and
+   *              anyone who has looked at a mountain knows it is not a contour
+   *   slope      snow lies on the ledges and slides off the faces, so a steep
+   *              face keeps only what its ledges hold. This is the term that
+   *              turns a white mountain into a striped one, and the striping is
+   *              the bedding — because the ledges ARE the bedding.
+   *   aspect     the lee and the shaded side hold snow the windward side loses.
+   *              Cheap: the sun is the only light that melts anything here.
+   */
+  if(uSnowline.w>0.001){
+    float alt=smoothstep(uSnowline.x-uSnowline.y,uSnowline.x+uSnowline.y,world.y);
+    // geoN, not N: accumulation is decided by the landform, not by the grain.
+    float lie=smoothstep(uSnowline.z*0.45,uSnowline.z,geoN.y);
+    // Shade: a face turned away from the sun holds snow well below the line.
+    float shade=1.0-0.35*clamp(dot(geoN,uSunDir),0.0,1.0);
+    // Break the edge up so the line is ragged rather than drawn with a compass.
+    float rag=fbmDamped(world.xz*0.021,3,2.07,0.5,0.6).x;
+    float snow=clamp(alt*lie*shade+rag*0.22*lie,0.0,1.0)*uSnowline.w;
+    if(snow>0.002){
+      // Cold, and never 1.0: pushing albedo to white is what produces the clipped
+      // highlight that reads as an untextured blob instead of as snow.
+      albedo=mix(albedo,vec3(0.815,0.855,0.925),snow);
+      roughness=mix(roughness,0.42,snow);
+      f0=mix(f0,vec3(0.028),snow);
+      // Snow is the one thing on this slope light gets into.
+      thickness=mix(thickness,1.0,snow*0.85);
+      // Snow buries the veins and the exposed rock it settles on.
+      rockExposed*=1.0-snow*0.92;
+    }
+  }
+
   // ------------------------------------------------------------ vein network
   // Magma cracks, the ochre desert's magenta channels, the verdant field's
   // biolume. Albedo is darkened *toward* the emission colour rather than being
@@ -5415,7 +5604,7 @@ class Terrain {
   }
 
   build() {
-    this.heightfield.bake(this.regimeOf(Biome.key));
+    this.heightfield.bake(this.regimeOf(Biome.key), this.alpineOf(Biome.key));
     this.deform.warmUp();
     UB.uDeform.value = this.deform.texture;
   }
@@ -5423,6 +5612,14 @@ class Terrain {
   regimeOf(key) {
     const b = BIOMES[key];
     return (b && b.regime) || [0, 0, 0, 0];
+  }
+
+  /** (ridge amount 0..1, relief metres). A fifth landform operator, kept out of
+   * the regime vec4 because that vector is full and its four channels are all
+   * mixes rather than amplitudes. */
+  alpineOf(key) {
+    const b = BIOMES[key];
+    return (b && b.alpine) || [0, 0];
   }
 
   /**
@@ -5435,7 +5632,8 @@ class Terrain {
    * either did almost nothing; both now come through here.
    */
   rebake(key) {
-    this.heightfield.bake(this.regimeOf(key || Biome.key));
+    const k = key || Biome.key;
+    this.heightfield.bake(this.regimeOf(k), this.alpineOf(k));
     // The trail, the berms and the ice are all measured against a bed that no
     // longer exists, so the field is reset rather than left to relax into the
     // new ground over the next few seconds.
@@ -5632,6 +5830,1159 @@ class RenderGraph {
     }
   }
 }
+/* =========================================================================
+ * FLORA — the thing that makes a green world a grassland rather than a green hill.
+ *
+ * A verdant or prairie planet shaded by albedo alone is a coloured slope: the
+ * reference plates are ninety percent *grass*, and grass is geometry catching a
+ * low sun, not a hue. So this draws it.
+ *
+ * Three decisions carry the cost:
+ *
+ * 1. One instanced draw per kind, placed on a jittered lattice that RE-CENTRES on
+ *    the player rather than covering the world. A planet-wide field would be
+ *    millions of blades; a hundred-metre disc that follows you is a few thousand,
+ *    and past that distance the terrain's own shading layer takes over — so the
+ *    handover is invisible and the cost is constant wherever you stand.
+ *
+ * 2. Blades are three-vertex triangles, not quads or crossed planes. A blade is
+ *    read as a silhouette and a taper; the second triangle of a quad is half the
+ *    vertices for nothing, and crossed planes double it again to fix a problem
+ *    (see-through at grazing angles) that a dense field does not have.
+ *
+ * 3. The bend is in the vertex shader off one wind uniform, so a gust crosses the
+ *    field as a travelling wave rather than every blade pulsing in unison. That
+ *    wave is the whole reason a still image of grass reads as a windy day.
+ * ========================================================================= */
+
+/**
+ * What grows on each world. Absent means nothing grows — and nothing growing on a
+ * basalt shelf or an ash plain is the correct answer, not a gap.
+ */
+/** Reused rather than allocated per instance in the reseat loop. */
+const UP_Y = Object.freeze(new THREE.Vector3(0, 1, 0));
+/** What a snow-laden crown tends toward. Cold, never pure white. */
+const SNOW_CROWN = Object.freeze(new THREE.Color(0.86, 0.90, 0.97));
+
+const BIOME_FLORA = {
+  verdant: {
+    // Three grass layers, not one. A single blade spec at a single height is the
+    // thing that makes a green world read as a lawn: real ground cover is a tall
+    // layer that catches the wind, a short dense layer that fills the gaps under
+    // it, and a damp layer that only exists where water collects.
+    grass: { count: 9000, radius: 92, height: [0.55, 1.5], width: 0.055,
+      tint: "#3f8f4c", tip: "#7fdc7a", dry: 0.12, maxSlope: 0.55, bend: 1.0,
+      moist: 0.4, clump: { scale: 0.014, gain: 0.42 } },
+    understory: [
+      // The mat: short, dense, no clumping, so it fills every gap the tall layer
+      // leaves and the ground stops showing through at grazing angles.
+      { count: 7000, radius: 46, height: [0.14, 0.34], width: 0.05,
+        tint: "#2f6f3c", tip: "#57a355", dry: 0.05, maxSlope: 0.62, bend: 0.55,
+        taper: [1.0, 0.20] },
+      // Reed in the hollows only. `moist: 1` is what puts it in the swales
+      // instead of everywhere, and it is tall enough to break the horizon.
+      { count: 2400, radius: 78, height: [0.9, 2.1], width: 0.038,
+        tint: "#3c6b48", tip: "#9fc06a", dry: 0.18, maxSlope: 0.24, bend: 1.7,
+        moist: 1.0, clump: { scale: 0.03, gain: 0.75 }, taper: [1.0, 0.05] },
+    ],
+    // Three tree kinds so a canopy is not one silhouette repeated, and they are
+    // clumped rather than sprinkled so the plain has groves and clearings.
+    trees: [
+      { count: 210, radius: 150, trunk: "#33261c", crown: "#2f7a44",
+        height: [3.2, 7.5], spread: 0.62, kind: "round", maxSlope: 0.42,
+        moist: 0.6, clump: { scale: 0.011, gain: 0.72 } },
+      { count: 110, radius: 150, trunk: "#3a2c1e", crown: "#48a05a",
+        height: [2.0, 4.2], spread: 0.9, kind: "flat", maxSlope: 0.5,
+        moist: -0.3, clump: { scale: 0.017, gain: 0.55 } },
+      // Bioluminescent spires, keyed to this world's accent. The plate the biome
+      // is drawn from gets almost all its light from the flora, and this is the
+      // part of the canopy that emits rather than reflects.
+      { count: 46, radius: 130, trunk: "#1d3a30", crown: "#6effc4",
+        height: [5.0, 11.0], spread: 0.30, kind: "conifer", maxSlope: 0.36,
+        moist: 0.8, clump: { scale: 0.008, gain: 0.85 } },
+    ],
+    flowers: { count: 3400, radius: 70, tint: "#7cffd0", stem: "#3d6b4a",
+      height: [0.16, 0.44], maxSlope: 0.4, clump: { scale: 0.05, gain: 0.8 } },
+    // Boulders in the grass. Two metres of stone breaking a flat green plane is
+    // worth more to the read than another thousand blades on it.
+    rocks: [
+      { kind: "rock", count: 130, radius: 120, stone: "#37383c", moss: "#2c6b3a",
+        height: [0.6, 2.6], spread: 1.15, maxSlope: 0.55, upright: 0.18,
+        sway: 0, sink: 0.34, clump: { scale: 0.02, gain: 0.6 } },
+    ],
+  },
+  shoal: {
+    // Sparse, dry, salt-tolerant: the shelf is sand, not soil.
+    grass: { count: 5400, radius: 70, height: [0.35, 0.85], width: 0.05,
+      tint: "#9aa860", tip: "#d8d08a", dry: 0.55, minH: 0.3,
+      maxSlope: 0.42, bend: 1.25, moist: 0.6, shelter: 0.22,
+      clump: { scale: 0.024, gain: 0.42 } },
+    trees: [{ count: 52, radius: 130, trunk: "#6b5a3c", crown: "#7fa05c",
+      height: [2.4, 4.6], spread: 1.1, kind: "flat", maxSlope: 0.36,
+      minH: 0.8, moist: 0.8, clump: { scale: 0.014, gain: 0.8 } }],
+    rocks: [
+      { kind: "rock", count: 90, radius: 105, stone: "#5e5a4c", moss: "#8a9a62",
+        height: [0.5, 1.9], spread: 1.2, maxSlope: 0.5, upright: 0.12,
+        sway: 0, sink: 0.42, minH: 0.2, clump: { scale: 0.03, gain: 0.5 } },
+    ],
+  },
+  verdigris: {
+    grass: { count: 6200, radius: 84, height: [0.45, 1.15], width: 0.05,
+      tint: "#2c6b48", tip: "#5fbf86", dry: 0.2, minH: 0.15,
+      maxSlope: 0.54, bend: 1.1, moist: 0.5, clump: { scale: 0.016, gain: 0.38 } },
+    understory: [
+      { count: 4200, radius: 40, height: [0.12, 0.3], width: 0.055,
+        tint: "#23573c", tip: "#3f8a5e", dry: 0.06, minH: 0.2, maxSlope: 0.58,
+        bend: 0.5, taper: [1.0, 0.22] },
+    ],
+    trees: [
+      { count: 140, radius: 140, trunk: "#241f18", crown: "#2a6b4a",
+        height: [2.6, 6.0], spread: 0.7, kind: "round", maxSlope: 0.44,
+        minH: 0.4, moist: 0.7, clump: { scale: 0.013, gain: 0.7 } },
+      // Mangrove-like stilted stands right at the waterline, which is where a
+      // jade-road world's silhouette actually lives.
+      { count: 90, radius: 110, trunk: "#1c2a22", crown: "#357a52",
+        height: [1.8, 3.6], spread: 1.25, kind: "flat", maxSlope: 0.3,
+        minH: 0.05, maxH: 2.2, maxWet: 0.5, moist: 1.0 },
+    ],
+    rocks: [
+      { kind: "rock", count: 110, radius: 120, stone: "#2b3a34", moss: "#2f7a54",
+        height: [0.7, 3.2], spread: 1.1, maxSlope: 0.6, upright: 0.15,
+        sway: 0, sink: 0.3, minH: 0.1, clump: { scale: 0.022, gain: 0.55 } },
+    ],
+  },
+  tidal: {
+    // Only the shoals hold anything, and what holds is reed rather than grass.
+    // The band that qualifies is a metre and a half of intertidal, so the count is
+    // high for the area rather than for the radius: a reed bed is dense or it is
+    // not a reed bed.
+    grass: { count: 5600, radius: 62, height: [0.7, 1.9], width: 0.04,
+      tint: "#4a6b52", tip: "#8aa878", dry: 0.35, minH: 0.05, maxH: 2.3,
+      maxSlope: 0.30, bend: 1.5, moist: 1.0, maxWet: 0.7,
+      clump: { scale: 0.035, gain: 0.55 } },
+    rocks: [
+      // Wave-rounded cobble on the shelf. Very sunk, very flat, no moss above
+      // the waterline because the surge scours it off.
+      { kind: "rock", count: 170, radius: 95, stone: "#4a4e52", moss: "#3f5e4a",
+        height: [0.25, 0.9], spread: 1.5, maxSlope: 0.35, upright: 0.06,
+        sway: 0, sink: 0.55, maxWet: 1.2, clump: { scale: 0.04, gain: 0.45 } },
+    ],
+  },
+  ochre: {
+    // A dune sea grows tussock in the swales and nothing on the crests.
+    grass: { count: 2400, radius: 66, height: [0.3, 0.8], width: 0.06,
+      tint: "#8a7038", tip: "#cbb066", dry: 0.8, maxSlope: 0.22, bend: 1.35,
+      // Tussock lives in the swales and in the lee, which is exactly what the two
+      // terms below say. A dune sea with even ground cover has no dunes in it.
+      moist: 0.9, shelter: 0.7, clump: { scale: 0.028, gain: 0.8 } },
+    rocks: [
+      // The channel rock the dunes migrate over, showing through in the deepest
+      // interdune troughs only.
+      { kind: "rock", count: 70, radius: 130, stone: "#5c3340", moss: "#7a5a3a",
+        height: [0.8, 3.4], spread: 1.3, maxSlope: 0.3, upright: 0.1,
+        sway: 0, sink: 0.5, moist: 1.0, clump: { scale: 0.012, gain: 0.85 } },
+    ],
+  },
+  /*
+   * The five worlds where nothing grows still are not bare.
+   *
+   * "No flora" was being drawn as "no objects", and those are different claims: a
+   * basalt shelf has clinker on it, an ash plain has ejecta, an ice shelf has
+   * rubble, and a brine flat has crusted blocks. Each of these is a scatter of one
+   * mineral layer through the same instanced path the canopy uses, with the
+   * placement rules doing the work — talus collects in hollows, ejecta prefers the
+   * open, rubble piles against the risers.
+   */
+  glacis: {
+    rocks: [
+      // Erratics: rime-crusted blocks the ice carried and dropped. Sparse, large,
+      // and standing proud, because ice does not bury what it leaves behind.
+      { kind: "rock", count: 120, radius: 165, stone: "#3e454e", moss: "#c8dcea",
+        height: [0.7, 3.8], spread: 1.0, maxSlope: 0.5, upright: 0.12,
+        sway: 0, sink: 0.18, clump: { scale: 0.012, gain: 0.7 } },
+      // Wind-scoured gravel lag in the hollows.
+      { kind: "rock", count: 300, radius: 100, stone: "#4a525c", moss: "#9fb6c8",
+        height: [0.16, 0.55], spread: 1.4, maxSlope: 0.42, upright: 0.05,
+        sway: 0, sink: 0.5, moist: 0.6, clump: { scale: 0.04, gain: 0.4 } },
+    ],
+  },
+  magma: {
+    rocks: [
+      // Clinker and lava bombs. Angular, black, and thrown clear of the vents, so
+      // they prefer the open ground rather than the hollows the melt fills.
+      { kind: "rock", count: 260, radius: 150, stone: "#1a1614", moss: "#57200e",
+        height: [0.35, 2.4], spread: 1.25, maxSlope: 0.58, upright: 0.14,
+        sway: 0, sink: 0.26, moist: -0.7, clump: { scale: 0.02, gain: 0.5 } },
+      // Cooled spatter: small, very numerous, half-buried in the crust.
+      { kind: "rock", count: 420, radius: 92, stone: "#221b18", moss: "#7a2a0c",
+        height: [0.12, 0.44], spread: 1.5, maxSlope: 0.5, upright: 0.04,
+        sway: 0, sink: 0.55, clump: { scale: 0.05, gain: 0.35 } },
+    ],
+  },
+  abyss: {
+    rocks: [
+      // Brine-crusted blocks calved off the vault walls. Pale rind, dark core.
+      { kind: "rock", count: 200, radius: 145, stone: "#2a3138", moss: "#9ec4cc",
+        height: [0.6, 3.2], spread: 1.1, maxSlope: 0.6, upright: 0.1,
+        sway: 0, sink: 0.32, moist: 0.5, clump: { scale: 0.018, gain: 0.55 } },
+      { kind: "rock", count: 360, radius: 96, stone: "#333c44", moss: "#b6d4d8",
+        height: [0.14, 0.6], spread: 1.45, maxSlope: 0.48, upright: 0.05,
+        sway: 0, sink: 0.52, moist: 0.8, clump: { scale: 0.042, gain: 0.4 } },
+    ],
+  },
+  regolith: {
+    rocks: [
+      // Impact ejecta. Sharp, unweathered, and sitting on the fines rather than in
+      // them — nothing on a dead plain moves anything, so nothing gets buried.
+      { kind: "rock", count: 230, radius: 170, stone: "#4c4740", moss: "#6a6252",
+        height: [0.4, 2.9], spread: 1.15, maxSlope: 0.55, upright: 0.1,
+        sway: 0, sink: 0.14, clump: { scale: 0.014, gain: 0.62 } },
+      { kind: "rock", count: 520, radius: 105, stone: "#585044", moss: "#736a58",
+        height: [0.10, 0.42], spread: 1.6, maxSlope: 0.5, upright: 0.03,
+        sway: 0, sink: 0.30, clump: { scale: 0.055, gain: 0.3 } },
+    ],
+  },
+  floe: {
+    rocks: [
+      // Ice rubble against the risers, and growlers in the channels. `minSlope`
+      // puts the rubble on the breaks of slope, which is where a plate piles it.
+      { kind: "rock", count: 280, radius: 130, stone: "#8fb6cc", moss: "#e2f2fa",
+        height: [0.3, 1.9], spread: 1.3, maxSlope: 0.75, minSlope: 0.14,
+        upright: 0.16, sway: 0, sink: 0.22, clump: { scale: 0.024, gain: 0.45 } },
+      { kind: "rock", count: 200, radius: 100, stone: "#6d97ad", moss: "#cfe8f4",
+        height: [0.2, 0.9], spread: 1.5, maxSlope: 0.4, upright: 0.05,
+        sway: 0, sink: 0.42, moist: 0.7, clump: { scale: 0.05, gain: 0.4 } },
+    ],
+  },
+  /**
+   * KOVIR — the conifer sea.
+   *
+   * This is the biome the whole scatter system exists for, and every term in the
+   * density field is load-bearing here:
+   *
+   *   the treeline    `band` fades the two spruce layers out between 52 m and
+   *                   96 m, so the forest thins into scattered survivors and then
+   *                   stops, rather than ending on a contour
+   *   the aspect      `shelter` on the tall spruce means the lee wall of a valley
+   *                   carries forest most of the way up and the windward wall is
+   *                   stripped to rock, which is the single most recognisable
+   *                   thing about a real alpine valley
+   *   the moisture    conifers take the damp valley floor, the tussock takes the
+   *                   dry crests, and neither is placed by altitude alone
+   *   the clumping    stands with clearings, at two different scales for the two
+   *                   spruce layers, so the canopy has structure in it
+   *
+   * The outcrops run the other way round from everywhere else — `minSlope` puts
+   * them ON the steep faces the trees are excluded from, which is what fills the
+   * gap the treeline leaves instead of leaving bare shaded rock.
+   */
+  kovir: {
+    // Alpine meadow: short, wiry, and only in the valley.
+    grass: { count: 7600, radius: 88, height: [0.22, 0.72], width: 0.048,
+      tint: "#42663c", tip: "#8ea862", dry: 0.34, maxSlope: 0.46, bend: 1.05,
+      band: [-999, 58, 20], moist: 0.5, clump: { scale: 0.02, gain: 0.5 } },
+    understory: [
+      // Fern and bilberry under the canopy. Broad, short, dark, and it wants the
+      // damp shade the spruce stands make.
+      { count: 5200, radius: 44, height: [0.16, 0.46], width: 0.11,
+        tint: "#24462c", tip: "#3e6b3a", dry: 0.04, maxSlope: 0.54, bend: 0.45,
+        band: [-999, 66, 18], moist: 0.8, clump: { scale: 0.013, gain: 0.6 },
+        taper: [1.0, 0.34] },
+      // Dry tussock on the crests, above where the meadow stops.
+      { count: 2600, radius: 92, height: [0.18, 0.52], width: 0.055,
+        tint: "#6b6a48", tip: "#a89e6c", dry: 0.72, maxSlope: 0.5, bend: 1.4,
+        band: [44, 128, 26], moist: -0.8, shelter: 0.3,
+        clump: { scale: 0.03, gain: 0.55 }, taper: [1.0, 0.10] },
+    ],
+    trees: [
+      // The canopy. Dark, dense, tall, sheltered, and snow-laden up high.
+      { count: 620, radius: 210, trunk: "#241a14", crown: "#1c3a2a",
+        height: [7.0, 19.0], spread: 0.34, kind: "conifer", maxSlope: 0.52,
+        band: [-999, 96, 30], moist: 0.6, shelter: 0.55, snowline: 62,
+        clump: { scale: 0.009, gain: 0.62 } },
+      // Younger, shorter spruce filling the gaps at a different clumping scale,
+      // so the canopy has two frequencies in it rather than one.
+      { count: 380, radius: 170, trunk: "#2b1f16", crown: "#254930",
+        height: [2.4, 7.5], spread: 0.44, kind: "conifer", maxSlope: 0.58,
+        band: [-999, 104, 26], moist: 0.4, shelter: 0.35, snowline: 58,
+        clump: { scale: 0.022, gain: 0.5 } },
+      // Birch in the valley bottom. A few pale trunks against the dark conifers
+      // is what stops the forest reading as one black mass.
+      { count: 90, radius: 130, trunk: "#b8b2a4", crown: "#5c8a46",
+        height: [3.0, 8.5], spread: 0.58, kind: "round", maxSlope: 0.38,
+        band: [-999, 40, 14], moist: 0.9, clump: { scale: 0.026, gain: 0.7 } },
+    ],
+    rocks: [
+      // Cliff outcrops: on the faces, not between them. Reddish stratified stone
+      // with lichen on the tops, which is the reference plate's rock exactly.
+      { kind: "rock", count: 260, radius: 175, stone: "#6b4132", moss: "#4a5a3c",
+        height: [1.2, 7.5], spread: 1.05, maxSlope: 0.92, minSlope: 0.22,
+        upright: 0.10, sway: 0, sink: 0.30, snowline: 74,
+        clump: { scale: 0.016, gain: 0.4 } },
+      // Talus below them: small, numerous, rounded, collecting in the hollows.
+      { kind: "rock", count: 340, radius: 120, stone: "#57493e", moss: "#3f5238",
+        height: [0.30, 1.15], spread: 1.35, maxSlope: 0.62, upright: 0.05,
+        sway: 0, sink: 0.48, moist: 0.5, clump: { scale: 0.034, gain: 0.5 } },
+    ],
+  },
+};
+
+const GRASS_VERT = G.head + G.noise + `
+in vec3 position;         // (x across blade, y up 0..1, 0)
+in vec3 aBase;            // world position of the root
+in vec3 aUp;              // terrain normal at the root
+in vec4 aParam;           // (height m, width m, phase, dryness)
+in vec3 aTint;
+in vec3 aTip;
+uniform mat4 projectionMatrix;
+uniform mat4 viewMatrix;
+uniform float uClock;
+uniform float uWindAngle;
+uniform float uWindStrength;
+uniform float uBend;
+uniform vec2 uTaper;      // (width factor at base, at tip)
+uniform vec3 uCamPos;
+uniform vec4 uTread;      // (x, z, radius, strength) — what the player flattened
+out vec3 vWorld;
+out vec3 vNormal;
+out vec3 vCol;
+out float vUp;
+void main(){
+  float t = position.y;
+  float h = aParam.x, w = aParam.y, ph = aParam.z;
+  vec2 wd = vec2(sin(uWindAngle), cos(uWindAngle));
+
+  // A travelling gust. Two incommensurate rates so the field breathes instead of
+  // ticking, sampled on the ROOT position so neighbouring blades share a phase and
+  // the wave is visible across the field.
+  float gust = sin(dot(aBase.xz, wd) * 0.085 - uClock * 1.5 + ph)
+             * 0.6 + sin(dot(aBase.xz, wd) * 0.23 - uClock * 2.7 + ph * 1.7) * 0.4;
+  float sway = gust * uWindStrength * uBend;
+
+  // Tread: blades flatten away from anything standing on them, and spring back
+  // when it leaves. One vec4 buys the single most convincing interaction a grass
+  // field can have.
+  vec2 toP = aBase.xz - uTread.xy;
+  float d = length(toP);
+  float press = uTread.w * (1.0 - smoothstep(uTread.z * 0.35, uTread.z, d));
+
+  // The bend is quadratic in t: a blade hinges from its base, so the tip travels
+  // far more than the middle. Linear bending reads as a rotating stick.
+  float bend = t * t;
+  vec3 side = normalize(cross(aUp, vec3(0.0, 1.0, 0.0) + vec3(0.001)));
+  if (dot(side, side) < 0.5) side = vec3(1.0, 0.0, 0.0);
+  side = normalize(cross(aUp, wd.x * vec3(1,0,0) + wd.y * vec3(0,0,1)));
+
+  // Width profile along the blade. A grass blade narrows to a point (1 -> 0.08),
+  // which is what makes a triangle read as a blade rather than a shard; a flower
+  // does the opposite (0.3 -> 1) and reads as a stem carrying a head. One uniform
+  // pair covers both, so the meadow layer is the same program as the lawn.
+  float taper = mix(uTaper.x, uTaper.y, t);
+  vec3 p = aBase
+    + aUp * (h * t * (1.0 - press * 0.75))
+    + side * (position.x * w * taper)
+    + (wd.x * vec3(1,0,0) + wd.y * vec3(0,0,1)) * (h * bend * (sway * 0.22 + press * 0.9));
+
+  vWorld = p;
+  // A blade's normal faces the viewer: it is a one-sided sliver, and lighting it
+  // by its geometric normal makes half the field black.
+  vec3 toCam = normalize(uCamPos - p);
+  vNormal = normalize(aUp * 0.55 + toCam * 0.45);
+  vUp = t;
+  vCol = mix(aTint, aTip, t * t);
+  vCol = mix(vCol, vCol * vec3(1.18, 1.05, 0.72), aParam.w);
+  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+}
+`;
+
+const GRASS_FRAG = G.head + G.noise + G.shading + G.atmosphere + G.ocean + `
+in vec3 vWorld;
+in vec3 vNormal;
+in vec3 vCol;
+in float vUp;
+out vec4 fragColor;
+uniform vec3 uSunDir;
+uniform vec3 uCamPos;
+uniform vec3 uSunRadiance;
+uniform vec3 uSH[9];
+uniform float uAmbient;
+uniform float uFogDensity;
+uniform float uFogHeight;
+uniform float uFogStart;
+uniform float uAerial;
+uniform sampler2D uSkyLUT;
+void main(){
+  vec3 N = normalize(vNormal);
+  vec3 L = uSunDir;
+  vec3 V = normalize(uCamPos - vWorld);
+  float ndl = dot(N, L);
+  // Grass is thin and translucent: the strongest thing in a field at a low sun is
+  // light coming THROUGH the blades, not off them. So the wrap is wide and there
+  // is an explicit transmission term on the back faces.
+  float lit = wrapDiffuse(ndl, 0.55);
+  vec3 col = vCol * uSunRadiance * 0.31830988618 * lit;
+  float back = pow(clamp(dot(-V, L), 0.0, 1.0), 2.2);
+  col += vCol * uSunRadiance * back * 0.55 * vUp;
+  col += vCol * shIrradiance(N, uSH) * uAmbient * 0.31830988618;
+  // Ambient occlusion by height: the base of a dense field is genuinely dark, and
+  // without this the whole field reads as a flat carpet.
+  col *= mix(0.34, 1.0, vUp);
+  col = waterColumn(col, vWorld, uCamPos, uClock);
+  col = applyAerial(col, uCamPos, vWorld, -V, L, uSkyLUT, uSunRadiance,
+                    uFogDensity, uFogHeight, uFogStart, uAerial);
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+const TREE_VERT = G.head + `
+in vec3 position;
+in vec3 normal;
+in vec3 aBase;
+in vec4 aQuat;
+in vec3 aScale;
+in vec3 aTint;
+in float aPhase;
+uniform mat4 projectionMatrix;
+uniform mat4 viewMatrix;
+uniform float uClock;
+uniform float uWindAngle;
+uniform float uWindStrength;
+uniform float uSway;      // 1 for anything alive, 0 for anything mineral
+out vec3 vWorld;
+out vec3 vNormal;
+out vec3 vCol;
+vec3 qrot(vec4 q, vec3 v){ return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v); }
+void main(){
+  vec3 p = position * aScale;
+  // A tree sways from its base like the grass does, but far slower and far less —
+  // matching the grass rate makes a forest look like a wheat field.
+  vec2 wd = vec2(sin(uWindAngle), cos(uWindAngle));
+  float h = max(p.y, 0.0) / max(aScale.y, 0.001);
+  float sway = sin(uClock * 0.7 + aPhase) * 0.5 + sin(uClock * 1.13 + aPhase * 2.1) * 0.5;
+  vec3 w = qrot(aQuat, p) + aBase;
+  w += (wd.x * vec3(1,0,0) + wd.y * vec3(0,0,1))
+     * (h * h * sway * uWindStrength * uSway * 0.18);
+  vWorld = w;
+  vNormal = normalize(qrot(aQuat, normal));
+  vCol = aTint;
+  gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
+}
+`;
+
+const TREE_FRAG = G.head + G.noise + G.shading + G.atmosphere + G.ocean + `
+in vec3 vWorld;
+in vec3 vNormal;
+in vec3 vCol;
+out vec4 fragColor;
+uniform vec3 uSunDir;
+uniform vec3 uCamPos;
+uniform vec3 uSunRadiance;
+uniform vec3 uSH[9];
+uniform float uAmbient;
+uniform float uFogDensity;
+uniform float uFogHeight;
+uniform float uFogStart;
+uniform float uAerial;
+uniform sampler2D uSkyLUT;
+void main(){
+  vec3 N = normalize(vNormal);
+  vec3 L = uSunDir;
+  vec3 V = normalize(uCamPos - vWorld);
+  float lit = wrapDiffuse(dot(N, L), 0.42);
+  vec3 col = vCol * uSunRadiance * 0.31830988618 * lit;
+  float back = pow(clamp(dot(-V, L), 0.0, 1.0), 3.0);
+  col += vCol * uSunRadiance * back * 0.30;
+  col += vCol * shIrradiance(N, uSH) * uAmbient * 0.31830988618;
+  col = waterColumn(col, vWorld, uCamPos, uClock);
+  col = applyAerial(col, uCamPos, vWorld, -V, L, uSkyLUT, uSunRadiance,
+                    uFogDensity, uFogHeight, uFogStart, uAerial);
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+class Flora {
+  constructor(terrain, graph) {
+    this.terrain = terrain;
+    this.graph = graph;
+    this.spec = null;
+    /**
+     * Every blade-shader layer: the grass itself, then any flower or tussock
+     * layer on top of it. They are one array because they reseat, light and
+     * dispose identically — the only thing that differs is the numbers.
+     */
+    this.blades = [];
+    this.trees = [];
+    this._centreX = 1e9;
+    this._centreZ = 1e9;
+    this._tread = new THREE.Vector4(0, 0, 3.2, 0);
+    this._n = new THREE.Vector3();
+    this._v1 = new THREE.Vector3();
+    this._v2 = new THREE.Vector3();
+    this._q = new THREE.Quaternion();
+    this._m = new THREE.Matrix4();
+    /** The pending incremental reseat, or null when the field is settled. */
+    this._job = null;
+    this._minRadius = 90;
+    this._settled = false;
+    this._windX = 0; this._windZ = 1;
+  }
+
+  /**
+   * Rebuild for a biome. Called on every terraform, because what grows is a
+   * property of the world and a jade sea's flora on an ash plain would be a lie
+   * the renderer tells for free.
+   */
+  setBiome(key) {
+    this.dispose();
+    this.spec = BIOME_FLORA[key] || null;
+    if (!this.spec) return;
+    const q = clamp01(S.floraDensity === undefined ? 1 : S.floraDensity);
+    if (q <= 0.001) { this.spec = null; return; }
+    // The blade layers, in the order they read best: the tall layer first so the
+    // short mat draws over its bases, then anything the biome adds under it.
+    if (this.spec.grass) {
+      this._buildGrass(this.spec.grass, q, this.spec.grass.taper || [1.0, 0.08]);
+    }
+    if (this.spec.understory) {
+      for (const u of this.spec.understory) {
+        this._buildGrass(u, q, u.taper || [1.0, 0.08]);
+      }
+    }
+    // A flower layer is a blade layer with an inverted width profile. Building it
+    // through the same path is why a meadow costs one extra draw call rather than
+    // a second system.
+    if (this.spec.flowers) {
+      const f = this.spec.flowers, g = this.spec.grass || {};
+      this._buildGrass({
+        count: f.count, radius: f.radius, height: f.height,
+        width: f.width === undefined ? 0.075 : f.width,
+        tint: f.stem === undefined ? "#4e7c46" : f.stem,
+        tip: f.tint, dry: 0,
+        minH: f.minH === undefined ? (g.minH === undefined ? -40 : g.minH) : f.minH,
+        maxH: f.maxH === undefined ? (g.maxH === undefined ? 999 : g.maxH) : f.maxH,
+        maxSlope: f.maxSlope === undefined ? 0.34 : f.maxSlope,
+        bend: f.bend === undefined ? 0.55 : f.bend,
+      }, q, [0.30, 1.0]);
+    }
+    if (this.spec.trees) for (const t of this.spec.trees) this._buildTrees(t, q);
+    // Outcrops go through the same instanced path as the canopy: same placement
+    // rules, same lighting, same one draw call each. The only things a rock does
+    // differently are that it sits INTO the slope rather than standing up on it,
+    // and that it does not sway.
+    if (this.spec.rocks) for (const r of this.spec.rocks) this._buildTrees(r, q);
+    let rmin = 1e9;
+    for (const b of this.blades) rmin = Math.min(rmin, b.data.spec.radius);
+    for (const t of this.trees) rmin = Math.min(rmin, t.data.spec.radius);
+    this._minRadius = rmin < 1e9 ? rmin : 90;
+    this._job = null;
+    this._settled = false;
+    this._centreX = 1e9;   // force a reseat on the next update
+  }
+
+  /**
+   * How damp this ground is, 0..1, without a water table to ask.
+   *
+   * Local concavity. Sample the bed at four points about fourteen metres out and
+   * compare their mean to the height here: a hollow collects what falls on the
+   * slopes above it and a crest sheds it. That is the whole of hydrology at this
+   * scale and it costs four height lookups against a CPU mirror that is already
+   * resident. Standing water, where a world has any, saturates it outright.
+   */
+  _moisture(x, z, h, wet) {
+    if (wet > 0.02) return 1;
+    const t = this.terrain, R = 14;
+    const mean = 0.25 * (t.heightAt(x + R, z) + t.heightAt(x - R, z)
+      + t.heightAt(x, z + R) + t.heightAt(x, z - R));
+    // Six metres of hollow is fully wet; six metres of crest is fully dry.
+    return clamp01(0.5 + (mean - h) / 12);
+  }
+
+  /**
+   * Acceptance probability for one instance, 0..1.
+   *
+   * The gate this replaces was three hard predicates — height in range, slope
+   * under a limit, not underwater — and hard predicates are exactly why
+   * procedural scatter reads as procedural: the forest stops on a contour line.
+   * The same information expressed as a field does not:
+   *
+   *   band      a soft altitude window, so a treeline is a fade over tens of
+   *             metres rather than a line, which is what a treeline actually is
+   *   slope     a falloff over the last third of the allowance, so a stand thins
+   *             going up a face instead of ending on one
+   *   moist     signed preference for damp ground: +1 for the conifers that fill
+   *             a valley floor, -1 for the tussock that only holds on dry crests
+   *   clump     low-frequency noise, so the field forms stands with clearings
+   *             between them rather than an even sprinkle at a lower count
+   *   shelter   an aspect term. The lee of a ridge keeps what the windward face
+   *             is stripped of, which is why one wall of an alpine valley carries
+   *             forest to the top and the opposite wall is bare rock.
+   *
+   * Every term is multiplicative and every term defaults to 1, so a rule that
+   * declares none of them behaves exactly as the plain slope-and-height gate did.
+   */
+  _density(r, x, z, h, n, wet) {
+    if (h < (r.minH === undefined ? -1e9 : r.minH)) return 0;
+    if (h > (r.maxH === undefined ? 1e9 : r.maxH)) return 0;
+    if (wet > (r.maxWet === undefined ? 0.25 : r.maxWet)) return 0;
+    const slope = 1 - n.y;
+    const ms = r.maxSlope === undefined ? 0.5 : r.maxSlope;
+    if (slope >= ms) return 0;
+    let d = smooth01((ms - slope) / (ms * 0.34));
+    if (r.minSlope) d *= smooth01((slope - r.minSlope) / (r.minSlope * 0.8));
+    if (r.band) {
+      const f = r.band[2] === undefined ? 10 : r.band[2];
+      d *= smooth01((h - r.band[0]) / f) * smooth01((r.band[1] - h) / f);
+      if (d <= 0) return 0;
+    }
+    if (r.moist) {
+      const m = this._moisture(x, z, h, wet);
+      // A preference, never a gate: at |moist| = 1 the wrong ground still grows a
+      // fifth of what the right ground does, because real stands have outliers.
+      d *= 0.2 + 0.8 * clamp01(r.moist > 0 ? m : 1 - m) * Math.abs(r.moist)
+        + 0.8 * (1 - Math.abs(r.moist));
+    }
+    if (r.clump) {
+      const c = fbm2(x * r.clump.scale, z * r.clump.scale);
+      d *= 1 - (r.clump.gain === undefined ? 0.7 : r.clump.gain)
+        * (1 - smooth01((c - 0.34) / 0.24));
+    }
+    if (r.shelter) {
+      const len = Math.hypot(n.x, n.z);
+      // A flat point has no aspect, so it is neither sheltered nor exposed.
+      const lee = len < 1e-4 ? 0.5
+        : clamp01(0.5 + 0.5 * (n.x * this._windX + n.z * this._windZ) / len);
+      d *= 1 - r.shelter * (1 - lee);
+    }
+    return clamp01(d);
+  }
+
+  /**
+   * Everything the sky and the sliders already own comes from the bank by
+   * reference, exactly as the terrain takes it. The only uniforms flora owns are
+   * the ones nothing else in the file has an opinion about: how hard this
+   * particular plant answers the wind, and where the player is standing.
+   */
+  _sharedUniforms() {
+    return shared("uCamPos", "uSunDir", "uSunRadiance", "uSH", "uSkyLUT",
+      "uAmbient", "uFogDensity", "uFogHeight", "uFogStart", "uAerial",
+      "uWindAngle");
+  }
+
+  _buildGrass(g, quality, taper) {
+    // One triangle. Three vertices is the whole blade.
+    const base = new THREE.BufferGeometry();
+    base.setAttribute("position", new THREE.Float32BufferAttribute(
+      [-0.5, 0, 0, 0.5, 0, 0, 0, 1, 0], 3));
+    base.setIndex([0, 1, 2]);
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.index = base.index;
+    geo.setAttribute("position", base.attributes.position);
+    const n = Math.max(64, Math.round(g.count * quality));
+    const data = {
+      base: new Float32Array(n * 3), up: new Float32Array(n * 3),
+      param: new Float32Array(n * 4), tint: new Float32Array(n * 3),
+      tip: new Float32Array(n * 3), spec: g, count: n,
+    };
+    geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(data.base, 3));
+    geo.setAttribute("aUp", new THREE.InstancedBufferAttribute(data.up, 3));
+    geo.setAttribute("aParam", new THREE.InstancedBufferAttribute(data.param, 4));
+    geo.setAttribute("aTint", new THREE.InstancedBufferAttribute(data.tint, 3));
+    geo.setAttribute("aTip", new THREE.InstancedBufferAttribute(data.tip, 3));
+    geo.instanceCount = n;
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
+
+    const own = {
+      uBend: { value: g.bend === undefined ? 1 : g.bend },
+      uTaper: { value: new THREE.Vector2(taper[0], taper[1]) },
+      uTread: { value: this._tread },
+      uWindStrength: { value: 1 },
+    };
+    const mat = new THREE.RawShaderMaterial({
+      glslVersion: THREE.GLSL3,
+      vertexShader: GRASS_VERT, fragmentShader: GRASS_FRAG,
+      uniforms: Object.assign(own, this._sharedUniforms()),
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 2;
+    const layer = { mesh, material: mat, own, data, blade: true, placed: 0,
+      salt: this.blades.length * 137.13 + 3.7,
+      item: this.graph.add({ mesh, beauty: mat }) };
+    this.blades.push(layer);
+    return layer;
+  }
+
+  _buildTrees(t, quality) {
+    const parts = [];
+    const slim = t.kind === "conifer";
+    if (t.kind !== "rock") {
+      const trunk = new THREE.CylinderGeometry(slim ? 0.022 : 0.06,
+        slim ? 0.075 : 0.11, 1, slim ? 6 : 5);
+      trunk.translate(0, 0.5, 0);
+      parts.push({ g: trunk, c: new THREE.Color(t.trunk) });
+    }
+    if (slim) {
+      /*
+       * A conifer as a modular assembly rather than a shape.
+       *
+       * The reference pipeline builds a spruce out of a couple of dozen branch
+       * sub-objects instanced hundreds of times per tree — real geometry, no
+       * alpha cards — so the silhouette is unique, the lighting is correct from
+       * every angle, and a canopy has depth in it. That is the right idea at a
+       * scale this renderer cannot pay for directly, so it is applied one level
+       * down: the module here is a single branch fan, and a tree is thirteen
+       * whorls of six to nine of them, tapering to a leader.
+       *
+       * What that buys over a cone is specifically silhouette. A cone has one
+       * outline; a whorled assembly has a ragged one that changes as you orbit
+       * it, and the gaps between whorls let sky through the crown, which is what
+       * separates a stand of spruce from a row of green triangles.
+       */
+      const WHORLS = 13;
+      for (let w = 0; w < WHORLS; w++) {
+        const u = w / (WHORLS - 1);
+        // Radius falls off faster than height rises: the classic spruce profile
+        // is nearly conical low down and needle-thin for the top fifth.
+        const rad = 0.40 * Math.pow(1 - u, 1.35) + 0.012;
+        const y = 0.10 + u * 0.86;
+        // Branches per whorl drops with height. Real whorls carry fewer, shorter
+        // branches near the leader because there is less light budget up there.
+        const nb = Math.max(3, Math.round(9 - u * 6));
+        // Branches sweep DOWN. An upswept conifer reads as a palm; the droop is
+        // the single most identifying thing about a snow-country spruce, because
+        // it is what sheds the load.
+        const droop = 0.16 + u * 0.10;
+        for (let b = 0; b < nb; b++) {
+          const a = (b / nb) * PI2 + w * 1.117;
+          const len = rad * (0.78 + hash1(w * 7.7 + b * 3.3) * 0.44);
+          // One fan = one flattened triangular prism, three vertices wide. Six
+          // triangles, and it is real geometry that casts a real shadow.
+          const fan = new THREE.ConeGeometry(len * 0.42, len, 4, 1);
+          fan.scale(1, 1, 0.34);
+          fan.rotateZ(Math.PI * 0.5);
+          fan.rotateX(droop);
+          fan.rotateY(-a);
+          fan.translate(Math.cos(a) * len * 0.5, y - droop * len * 0.5,
+            Math.sin(a) * len * 0.5);
+          parts.push({ g: fan, c: new THREE.Color(t.crown) });
+        }
+      }
+      // The leader: a bare spike above the top whorl, which is what makes a
+      // conifer's outline come to a point instead of stopping.
+      const lead = new THREE.ConeGeometry(0.030, 0.16, 5, 1);
+      lead.translate(0, 1.02, 0);
+      parts.push({ g: lead, c: new THREE.Color(t.crown) });
+    } else if (t.kind === "rock") {
+      /*
+       * A stratified outcrop.
+       *
+       * The reference pipeline scans real rock and leans on virtualised geometry
+       * to keep every crack at every distance. What actually carries that read at
+       * a distance is not the crack count — it is (a) bedding, the horizontal
+       * layering that tells you the rock has a grain, and (b) a silhouette that
+       * is flat-topped and stepped rather than lumpy. Both are cheap to generate
+       * and neither survives being replaced with a noise-displaced sphere, which
+       * is why this is not one.
+       *
+       * So: a subdivided icosahedron, radially displaced by a term that is nearly
+       * constant within a bed and steps between beds. Non-indexed, so every facet
+       * gets its own normal and the steps read as steps.
+       */
+      const g = new THREE.IcosahedronGeometry(0.5, 2);
+      const p = g.attributes.position;
+      const BEDS = 5;
+      for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+        const len = Math.hypot(x, y, z) || 1;
+        // Which bed this vertex falls in, and where in it. Quantising the height
+        // is what creates the ledge; the fractional part only leans the bed
+        // slightly, so a bed is near-vertical at its face and flat on its top.
+        const yn = (y / len) * 0.5 + 0.5;
+        const bed = Math.floor(yn * BEDS);
+        const fr = yn * BEDS - bed;
+        // Each bed has its own thickness — real bedding is not evenly spaced.
+        let k = 0.80 + hash1(bed * 5.31 + 1.7) * 0.34;
+        // A recessed weathering band low in each bed, which is what makes the
+        // ledge above it read as an overhang.
+        k -= smooth01(1 - Math.abs(fr - 0.22) / 0.22) * 0.085;
+        // Lateral break-up so the outcrop is not a stack of discs.
+        k *= 0.92 + fbm2(x * 5.1 + bed * 13.7, z * 5.1) * 0.20;
+        // Flatten the top: an outcrop is truncated by weathering, not domed.
+        const flat = 1 - smooth01((yn - 0.80) / 0.20) * 0.30;
+        p.setXYZ(i, (x / len) * k * flat, (y / len) * k * 0.86, (z / len) * k * flat);
+      }
+      // IcosahedronGeometry is already non-indexed, so the displaced vertices are
+      // per-face already: recomputing normals is enough to make the beds faceted.
+      const faceted = g.index ? g.toNonIndexed() : g;
+      faceted.computeVertexNormals();
+      if (faceted !== g) g.dispose();
+      // Bedding colour: alternate beds sit a little darker, and the up-facing
+      // vertices carry moss. Both go in per-vertex, so one draw call covers the
+      // whole field and no texture is fetched.
+      const fp = faceted.attributes.position, fn = faceted.attributes.normal;
+      const fc = new Float32Array(fp.count * 3);
+      const rockC = new THREE.Color(t.stone || t.trunk);
+      const mossC = new THREE.Color(t.moss || t.crown);
+      const tmpc = new THREE.Color();
+      for (let i = 0; i < fp.count; i++) {
+        const yn = fp.getY(i) / 0.86 * 0.5 + 0.5;
+        const bed = Math.floor(clamp01(yn) * BEDS);
+        tmpc.copy(rockC).multiplyScalar(0.80 + hash1(bed * 9.13 + 4.2) * 0.42);
+        // Moss and lichen take the flat tops and the shaded lower third; a
+        // vertical face keeps none of it, which is the read on a real outcrop.
+        const upness = clamp01(fn.getY(i));
+        tmpc.lerp(mossC, Math.pow(upness, 2.2) * (0.42 + 0.34 * (1 - clamp01(yn))));
+        fc[i * 3] = tmpc.r; fc[i * 3 + 1] = tmpc.g; fc[i * 3 + 2] = tmpc.b;
+      }
+      faceted.setAttribute("aVertCol", new THREE.BufferAttribute(fc, 3));
+      parts.push({ g: faceted, c: new THREE.Color(1, 1, 1), hasCol: true });
+    } else if (t.kind === "round") {
+      for (let i = 0; i < 3; i++) {
+        const c = new THREE.IcosahedronGeometry(0.30 - i * 0.05, 0);
+        c.scale(1, 0.82, 1);
+        c.translate((i - 1) * 0.11, 0.78 + i * 0.13, (i % 2) * 0.09);
+        parts.push({ g: c, c: new THREE.Color(t.crown) });
+      }
+    } else {
+      // A flat, spreading crown: two squashed discs, which reads as an acacia and
+      // is the silhouette the savannah plates lean on.
+      for (let i = 0; i < 2; i++) {
+        const c = new THREE.CylinderGeometry(0.34 - i * 0.08, 0.30 - i * 0.06, 0.09, 7);
+        c.translate(0, 0.86 + i * 0.11, 0);
+        parts.push({ g: c, c: new THREE.Color(t.crown) });
+      }
+    }
+    // Merge, carrying a per-vertex colour so trunk and crown share one draw.
+    let vc = 0, ic = 0;
+    for (const p of parts) {
+      vc += p.g.attributes.position.count;
+      ic += p.g.index ? p.g.index.count : p.g.attributes.position.count;
+    }
+    const pos = new Float32Array(vc * 3), nrm = new Float32Array(vc * 3);
+    const col = new Float32Array(vc * 3), idx = new Uint32Array(ic);
+    let vo = 0, io = 0;
+    for (const p of parts) {
+      const gp = p.g.attributes.position, gn = p.g.attributes.normal;
+      for (let i = 0; i < gp.count; i++) {
+        pos[(vo + i) * 3] = gp.getX(i);
+        pos[(vo + i) * 3 + 1] = gp.getY(i);
+        pos[(vo + i) * 3 + 2] = gp.getZ(i);
+        nrm[(vo + i) * 3] = gn.getX(i);
+        nrm[(vo + i) * 3 + 1] = gn.getY(i);
+        nrm[(vo + i) * 3 + 2] = gn.getZ(i);
+        col[(vo + i) * 3] = p.c.r;
+        col[(vo + i) * 3 + 1] = p.c.g;
+        col[(vo + i) * 3 + 2] = p.c.b;
+      }
+      // A part may bring its own per-vertex colour — the stratified outcrop does,
+      // because its bedding and its moss are geometry-dependent rather than one
+      // flat swatch. Anything that does not just gets its swatch splatted.
+      const pc = p.g.attributes.aVertCol;
+      if (pc) {
+        for (let i = 0; i < gp.count; i++) {
+          col[(vo + i) * 3] = pc.getX(i);
+          col[(vo + i) * 3 + 1] = pc.getY(i);
+          col[(vo + i) * 3 + 2] = pc.getZ(i);
+        }
+      }
+      const gi = p.g.index;
+      for (let i = 0; i < (gi ? gi.count : gp.count); i++) {
+        idx[io + i] = (gi ? gi.getX(i) : i) + vo;
+      }
+      io += gi ? gi.count : gp.count;
+      vo += gp.count;
+      p.g.dispose();
+    }
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
+    geo.setAttribute("aVertCol", new THREE.BufferAttribute(col, 3));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    const n = Math.max(8, Math.round(t.count * quality));
+    const data = {
+      base: new Float32Array(n * 3), quat: new Float32Array(n * 4),
+      scale: new Float32Array(n * 3), tint: new Float32Array(n * 3),
+      phase: new Float32Array(n), spec: t, count: n,
+    };
+    geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(data.base, 3));
+    geo.setAttribute("aQuat", new THREE.InstancedBufferAttribute(data.quat, 4));
+    geo.setAttribute("aScale", new THREE.InstancedBufferAttribute(data.scale, 3));
+    geo.setAttribute("aTint", new THREE.InstancedBufferAttribute(data.tint, 3));
+    geo.setAttribute("aPhase", new THREE.InstancedBufferAttribute(data.phase, 1));
+    geo.instanceCount = n;
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
+
+    const own = {
+      uWindStrength: { value: 1 },
+      uSway: { value: t.sway === undefined ? 1 : t.sway },
+    };
+    const mat = new THREE.RawShaderMaterial({
+      glslVersion: THREE.GLSL3,
+      vertexShader: TREE_VERT.replace("in vec3 aTint;", "in vec3 aTint;\nin vec3 aVertCol;")
+        .replace("vCol = aTint;", "vCol = aVertCol * aTint;"),
+      fragmentShader: TREE_FRAG,
+      uniforms: Object.assign(own, this._sharedUniforms()),
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.frustumCulled = false;
+    this.trees.push({ mesh, material: mat, own, data, blade: false, placed: 0,
+      salt: this.trees.length * 211.7 + 13.1,
+      item: this.graph.add({ mesh, beauty: mat }) });
+  }
+
+  /**
+   * Reseat the field around the player — incrementally.
+   *
+   * Placement is a Fibonacci-ish spiral inside each layer's radius, jittered per
+   * instance and accepted against the density field. The spiral matters: a
+   * uniform-random disc clumps visibly at these counts, and a grid reads as a grid
+   * the moment you stand at the right angle to it.
+   *
+   * The reason this is a job rather than a call is arithmetic. A world like KOVIR
+   * seats about seventeen thousand instances, and each one costs a height lookup,
+   * a normal (four more), a moisture probe (four more) and three octaves of noise
+   * — call it ten thousand bicubic samples per thousand instances. Doing that in
+   * one frame is a stall you can feel, and it recurs every time the player crosses
+   * a third of the radius, which at surf speed is under two seconds.
+   *
+   * Spreading it costs nothing visually, because a half-migrated field is not
+   * wrong: both halves are valid placements, one around the old centre and one
+   * around the new, and the seam between them is a density boundary rather than an
+   * edge. So the field walks with the player instead of jumping with them.
+   */
+  _beginReseat(cx, cz) {
+    // The aspect term needs the wind as a vector, in the same convention the
+    // shaders use: (sin, cos) of the bearing.
+    const wa = (S.windDirection * Math.PI) / 180;
+    this._windX = Math.sin(wa); this._windZ = Math.cos(wa);
+    const layers = [];
+    for (const b of this.blades) { b.placed = 0; layers.push(b); }
+    for (const t of this.trees) { t.placed = 0; layers.push(t); }
+    this._job = { cx, cz, li: 0, i: 0, layers };
+  }
+
+  /**
+   * Seat the whole field now, in one go.
+   *
+   * Only correct at boot, where a stall is a progress bar rather than a dropped
+   * frame. Everywhere else the incremental path is the point.
+   */
+  settle(cx, cz) {
+    if (!this.spec) return;
+    this._centreX = cx; this._centreZ = cz;
+    this._beginReseat(cx, cz);
+    while (this._job) this._pump(8192);
+    this._settled = true;
+  }
+
+  /** Seat at most `budget` instances of the pending job. */
+  _pump(budget) {
+    const j = this._job;
+    if (!j) return;
+    let done = 0;
+    while (j.li < j.layers.length && done < budget) {
+      const layer = j.layers[j.li];
+      const count = layer.data.count;
+      const end = Math.min(count, j.i + (budget - done));
+      if (layer.blade) this._seatBlades(layer, j.i, end, j.cx, j.cz);
+      else this._seatProps(layer, j.i, end, j.cx, j.cz);
+      done += end - j.i;
+      j.i = end;
+      if (j.i >= count) { j.li++; j.i = 0; }
+    }
+    if (j.li >= j.layers.length) this._job = null;
+  }
+
+  _seatBlades(layer, from, to, cx, cz) {
+    const d = layer.data, g = d.spec, salt = layer.salt;
+    const tint = new THREE.Color(g.tint), tip = new THREE.Color(g.tip);
+    const tmpA = new THREE.Color(), tmpB = new THREE.Color();
+    const GA = 2.39996323;
+    let placed = 0;
+    for (let i = from; i < to; i++) {
+      // sqrt distribution fills the disc evenly rather than crowding the centre.
+      const r = g.radius * Math.sqrt((i + 0.5) / d.count);
+      const a = i * GA + salt;
+      const x = cx + Math.cos(a) * r + (hash1(i * 1.7 + salt) - 0.5) * 1.6;
+      const z = cz + Math.sin(a) * r + (hash1(i * 2.3 + 9 + salt) - 0.5) * 1.6;
+      const h = this.terrain.heightAt(x, z);
+      this.terrain.normalAt(x, z, this._n);
+      const wet = Ocean.on ? Ocean.depthAt(x, z) : 0;
+      const dens = this._density(g, x, z, h, this._n, wet);
+      const o3 = i * 3, o4 = i * 4;
+      if (hash1(i * 31.7 + salt) >= dens) {
+        // Park rejected blades at zero height rather than culling: a variable
+        // instanceCount means re-uploading the count every reseat, and a
+        // zero-height blade costs one degenerate triangle the rasteriser drops.
+        d.param[o4] = 0;
+        continue;
+      }
+      placed++;
+      d.base[o3] = x; d.base[o3 + 1] = h; d.base[o3 + 2] = z;
+      d.up[o3] = this._n.x; d.up[o3 + 1] = this._n.y; d.up[o3 + 2] = this._n.z;
+      // Blades in the middle of a stand are taller than blades at its edge: the
+      // same density field that decided whether this one exists decides how well
+      // it did, which is what gives a field a soft border instead of a cut.
+      const hv = hash1(i * 3.1 + 4 + salt) * (0.55 + 0.45 * dens);
+      d.param[o4] = mix(g.height[0], g.height[1], hv);
+      d.param[o4 + 1] = g.width * (0.75 + hash1(i * 5.7 + salt) * 0.5);
+      d.param[o4 + 2] = hash1(i * 7.3 + salt) * PI2;
+      d.param[o4 + 3] = clamp01(g.dry + (hash1(i * 11.1 + salt) - 0.5) * 0.5);
+      // Per-blade hue drift. A field of one green is the single biggest tell.
+      tmpA.copy(tint).offsetHSL((hash1(i * 13.7 + salt) - 0.5) * 0.05,
+        (hash1(i * 17.3 + salt) - 0.5) * 0.18, (hash1(i * 19.1 + salt) - 0.5) * 0.14);
+      tmpB.copy(tip).offsetHSL((hash1(i * 23.9 + salt) - 0.5) * 0.05, 0,
+        (hash1(i * 29.3 + salt) - 0.5) * 0.12);
+      d.tint[o3] = tmpA.r; d.tint[o3 + 1] = tmpA.g; d.tint[o3 + 2] = tmpA.b;
+      d.tip[o3] = tmpB.r; d.tip[o3 + 1] = tmpB.g; d.tip[o3 + 2] = tmpB.b;
+    }
+    layer.placed += placed;
+    for (const k of ["aBase", "aUp", "aParam", "aTint", "aTip"]) {
+      layer.mesh.geometry.attributes[k].needsUpdate = true;
+    }
+  }
+
+  _seatProps(layer, from, to, cx, cz) {
+    const d = layer.data, t = d.spec, salt = layer.salt;
+    const tmp = new THREE.Color();
+    const q = this._q, up = this._n, fwd = this._v1, right = this._v2, m = this._m;
+    const GA = 2.39996323;
+    let placed = 0;
+    for (let i = from; i < to; i++) {
+      const r = t.radius * Math.sqrt((i + 0.5) / d.count);
+      const a = i * GA * 1.61 + salt;
+      const x = cx + Math.cos(a) * r + (hash1(i * 3.7 + 31 + salt) - 0.5) * 7;
+      const z = cz + Math.sin(a) * r + (hash1(i * 5.3 + 17 + salt) - 0.5) * 7;
+      const h = this.terrain.heightAt(x, z);
+      this.terrain.normalAt(x, z, up);
+      const wet = Ocean.on ? Ocean.depthAt(x, z) : 0;
+      const dens = this._density(t, x, z, h, up, wet);
+      const o3 = i * 3, o4 = i * 4;
+      if (hash1(i * 37.3 + salt) >= dens) {
+        d.scale[o3] = 0; d.scale[o3 + 1] = 0; d.scale[o3 + 2] = 0;
+        continue;
+      }
+      placed++;
+      d.base[o3] = x; d.base[o3 + 2] = z;
+      // Trees stand up, not perpendicular to the slope: a tree normal to a
+      // hillside reads as a fallen tree. Conifers stand straighter than
+      // broadleaves, and a boulder does the opposite — it lies in the slope,
+      // which is what `upright` near zero means.
+      up.lerp(UP_Y, t.upright === undefined
+        ? (t.kind === "conifer" ? 0.88 : 0.75) : t.upright).normalize();
+      fwd.set(hash1(i * 7.1 + salt) - 0.5, 0, hash1(i * 11.3 + salt) - 0.5).normalize();
+      right.crossVectors(up, fwd).normalize();
+      fwd.crossVectors(right, up).normalize();
+      m.makeBasis(right, up, fwd);
+      q.setFromRotationMatrix(m);
+      d.quat[o4] = q.x; d.quat[o4 + 1] = q.y;
+      d.quat[o4 + 2] = q.z; d.quat[o4 + 3] = q.w;
+      // A tree in the heart of a stand out-competes one on its edge, so height
+      // tracks the density field. This is what makes a canopy read as a canopy
+      // with a ragged margin rather than as one height with noise on it.
+      const hh = mix(t.height[0], t.height[1],
+        hash1(i * 13.1 + salt) * (0.5 + 0.5 * dens));
+      if (t.kind === "rock") {
+        // Independent jitter per axis. A boulder scaled uniformly is the same
+        // boulder at every size, and a field of one boulder is unmistakable.
+        d.scale[o3] = hh * t.spread * (0.72 + hash1(i * 17.7 + salt) * 0.62);
+        d.scale[o3 + 1] = hh * (0.62 + hash1(i * 21.3 + salt) * 0.66);
+        d.scale[o3 + 2] = hh * t.spread * (0.72 + hash1(i * 27.1 + salt) * 0.62);
+      } else {
+        const sw = hh * t.spread * (0.8 + hash1(i * 17.7 + salt) * 0.4);
+        d.scale[o3] = sw; d.scale[o3 + 1] = hh; d.scale[o3 + 2] = sw;
+      }
+      // Half-buried. A boulder resting exactly on the surface reads as a prop
+      // dropped onto the ground, which is what it is; sinking it by a third of
+      // its own height is what makes it read as emerging from the ground.
+      d.base[o3 + 1] = h - (t.sink === undefined ? 0 : t.sink)
+        * d.scale[o3 + 1] * (0.7 + hash1(i * 33.9 + salt) * 0.6);
+      tmp.setRGB(1, 1, 1).offsetHSL((hash1(i * 19.3 + salt) - 0.5) * 0.04, 0,
+        (hash1(i * 23.1 + salt) - 0.5) * 0.20);
+      // Snow load. Above the snowline a crown carries white, and it fades in over
+      // the band rather than switching, so a treeline is dusted and the peaks are
+      // laden. The same term whitens the tops of the outcrops, which is what
+      // makes a ridge read as snow-capped from inside the valley.
+      if (t.snowline !== undefined) {
+        tmp.lerp(SNOW_CROWN, smooth01((h - t.snowline) / 26) * 0.72);
+      }
+      d.tint[o3] = tmp.r; d.tint[o3 + 1] = tmp.g; d.tint[o3 + 2] = tmp.b;
+      d.phase[i] = hash1(i * 29.7 + salt) * PI2;
+    }
+    layer.placed += placed;
+    for (const k of ["aBase", "aQuat", "aScale", "aTint", "aPhase"]) {
+      layer.mesh.geometry.attributes[k].needsUpdate = true;
+    }
+  }
+
+
+  update(dt, controller) {
+    if (!this.spec) return;
+    const p = controller.position;
+    // Reseat when the player has left a third of the SMALLEST layer's radius. The
+    // smallest is the one that runs out first, and one layer with a hole in it
+    // where the player is standing is more obvious than every layer being
+    // slightly stale.
+    const rad = this._minRadius;
+    const dx = p.x - this._centreX, dz = p.z - this._centreZ;
+    if (dx * dx + dz * dz > (rad * 0.30) * (rad * 0.30)) {
+      this._centreX = p.x; this._centreZ = p.z;
+      this._beginReseat(p.x, p.z);
+    }
+    // Budget: enough to settle a fresh field inside about a second at 60 Hz, and
+    // four times that while the first seating is still pending, because a field
+    // that has never been placed is a field that is not there yet.
+    this._pump(this._settled ? 2600 : 9000);
+    if (!this._job) this._settled = true;
+    // Tread: where the player is, how wide, how hard. Strength fades with speed so
+    // a sprint lays the field flatter than a stroll.
+    this._tread.set(p.x, p.z, 3.0 + controller.speed01 * 2.2,
+      clamp01(0.45 + controller.speed01 * 0.55));
+
+    // Direction is the bank's; only the response amplitude is ours, because a
+    // gale that lays a wheat field flat barely moves an acacia crown.
+    const at = Biome.live.atmos;
+    const ws = S.windStrength
+      * (S.biomeAtmos && at.wind !== undefined ? at.wind : 1);
+    for (const b of this.blades) b.own.uWindStrength.value = ws;
+    for (const t of this.trees) t.own.uWindStrength.value = ws;
+  }
+
+  setVisible(v) {
+    for (const b of this.blades) b.item.visible = v;
+    for (const t of this.trees) t.item.visible = v;
+  }
+
+  /** Instances actually standing after the density field has had its say. */
+  get placed() {
+    let n = 0;
+    for (const b of this.blades) n += b.placed || 0;
+    for (const t of this.trees) n += t.placed || 0;
+    return n;
+  }
+  /** Instances the field could have placed, standing or not. */
+  get budgeted() {
+    let n = 0;
+    for (const b of this.blades) n += b.data.count;
+    for (const t of this.trees) n += t.data.count;
+    return n;
+  }
+
+  dispose() {
+    for (const it of this.blades.concat(this.trees)) {
+      const i = this.graph.items.indexOf(it.item);
+      if (i >= 0) this.graph.items.splice(i, 1);
+      this.graph.scene.remove(it.mesh);
+      it.mesh.geometry.dispose();
+      it.material.dispose();
+    }
+    this.blades = [];
+    this.trees = [];
+    this._job = null;
+  }
+}
+
 /* =========================================================================
  * Character locomotion + snow-surf physics.
  *
@@ -7624,7 +8975,7 @@ const M_HARD = 7, M_VISOR = 8, M_SEAL = 9, M_HIVIZ = 10, M_FOIL = 11, M_GLOW = 1
 
 /** Biome -> outfit. The traversal column of SYSTEM_MANIFEST agrees with this. */
 const BIOME_OUTFIT = {
-  glacis: V_RIME, floe: V_RIME,
+  glacis: V_RIME, floe: V_RIME, kovir: V_RIME,
   tidal: V_MARINE, shoal: V_MARINE,
   abyss: V_VAC, regolith: V_VAC,
   magma: V_THERM,
@@ -15692,10 +17043,11 @@ function planRealm(index, terrain) {
  *
  * SYSTEM_MANIFEST has asserted three things since it was written that nothing in
  * this file ever read: nine agent cells per inhabited body, a three-seat Minato
- * Council per inhabited body, and an `inhabited` flag separating the three
- * populated worlds from the six monitored ones. A monitor that reports numbers it
- * does not simulate is a dashboard with a story attached, so this is the
- * simulation those three assertions describe.
+ * Council per inhabited body, and an `inhabited` flag separating the populated
+ * worlds from the monitored ones. A monitor that reports numbers it does not
+ * simulate is a dashboard with a story attached, so this is the simulation those
+ * three assertions describe. The counts are never written down here — they are
+ * read off the manifest, so adding a world is a manifest edit and nothing else.
  *
  * The division of labour matters and it is the whole design:
  *
@@ -15710,7 +17062,7 @@ function planRealm(index, terrain) {
  *   the council   decides whether a realm is finished. Three seats, each able to
  *                 raise a hold, and a realm cannot commission over an open hold.
  *
- * On the six monitored worlds there are no resident cells, so the avatars carry the
+ * On a monitored world there are no resident cells, so the avatars carry the
  * fabrication themselves and the monitor says so. That is what makes `inhabited`
  * load-bearing rather than decorative.
  * ========================================================================= */
@@ -15735,6 +17087,169 @@ const FAB_PHASES = [
   { id: "commis", name: "COMMISSIONING & START-UP", disc: "qa", share: 0.04, forms: null },
   { id: "handover", name: "PERFORMANCE TEST & HANDOVER", disc: "qa", share: 0.03, forms: null },
 ];
+
+/* =========================================================================
+ * FABRICATION STYLES — one per world, determined by its ground.
+ *
+ * FAB_PHASES above is the *timeline*: eleven phases whose shares sum to one. It
+ * is the same everywhere, and that was the gap. What a crew can actually build is
+ * decided by what the ground will hold, what the air does to it, and how far away
+ * help is — so a dune sea and an ice shelf running an identical phase profile was
+ * the engine quietly asserting that fabrication is a paint job.
+ *
+ * A style therefore names four things: the ground it works, how it gets load into
+ * that ground, what it consequently builds, and a per-phase WEIGHT that multiplies
+ * the timeline. The weights are the load-bearing part. A weight of zero is not
+ * "less of this phase" — it is a phase that does not exist on this world, and the
+ * cells whose discipline owns it will visibly starve, which the steering panel
+ * then attributes to them by name.
+ *
+ * Weights are normalised at read time so a style cannot accidentally make a world
+ * take twice as long to build as its neighbour; only the SHAPE of the work differs.
+ * ========================================================================= */
+const FAB_STYLES = {
+  glacis: {
+    label: "CASCADE PILE & THERMAL BREAK",
+    ground: "crystalline shelf over moving ice",
+    load: "piles driven to bearing through the shelf, every one on a thermal break",
+    builds: ["piled terraces", "cascade galleries", "rime-shed roofs"],
+    // Foundations dominate: putting load through something that will melt under
+    // anything warm is the whole engineering problem on an ice world.
+    weight: { site: 1.2, found: 2.2, struct: 1.2, mech: 0.9, rotate: 0.6,
+      pipe: 1.0, eni: 0.9, clad: 1.5, precom: 1.0, commis: 0.9, handover: 0.8 },
+    hazard: "shelf migration · thermal bridging",
+  },
+  verdant: {
+    label: "GROW & GRAFT",
+    ground: "living soil under a false-flora canopy",
+    load: "shallow rafts and grafted root piles — the ground is an asset, not a problem",
+    builds: ["grown scaffolds", "canopy platforms", "lit causeways"],
+    // The one world where site prep is restraint rather than clearance, and where
+    // handover is heaviest because the charter is to leave it alive.
+    weight: { site: 1.7, found: 0.9, struct: 1.0, mech: 0.8, rotate: 0.6,
+      pipe: 0.9, eni: 1.2, clad: 0.7, precom: 0.9, commis: 1.0, handover: 1.6 },
+    hazard: "habitat disturbance · consent required",
+  },
+  ochre: {
+    label: "BATTERED FOOTING & BURIED RUN",
+    ground: "migrating rust dune over magenta channel rock",
+    load: "deep battered footings below the slip face; nothing bears on loose sand",
+    builds: ["windbreak spines", "buried service runs", "dune-anchored pads"],
+    // Site prep is heavy because the site will not stay where you left it, and
+    // piping goes underground because anything on the surface gets scoured.
+    weight: { site: 1.6, found: 1.5, struct: 0.9, mech: 0.9, rotate: 0.7,
+      pipe: 1.4, eni: 1.0, clad: 1.1, precom: 0.9, commis: 0.9, handover: 0.8 },
+    hazard: "dune migration · abrasive scour",
+  },
+  magma: {
+    label: "SLAG CAST & HEAT SHIELD",
+    ground: "hammered basalt over a convecting melt sea",
+    load: "footings cast from cooled slag, re-cast when the crust shifts",
+    builds: ["refractory shells", "stilt walkways over the melt", "thermal spines"],
+    // Everything here is cladding, and nothing survives a first firing — so those
+    // two phases carry the work and structure barely matters.
+    weight: { site: 1.4, found: 1.3, struct: 1.0, mech: 0.9, rotate: 0.5,
+      pipe: 0.8, eni: 0.6, clad: 1.9, precom: 1.2, commis: 1.7, handover: 0.8 },
+    hazard: "crust migration · radiant load",
+  },
+  abyss: {
+    label: "BRINE PILE & VAULT",
+    ground: "crystalline brine shelf over a deep cold column",
+    load: "driven brine piles, vaulted over rather than framed",
+    builds: ["sunk piles", "vaulted deep halls", "rime-lit shafts"],
+    weight: { site: 0.9, found: 1.8, struct: 1.6, mech: 1.0, rotate: 0.7,
+      pipe: 1.1, eni: 1.0, clad: 1.2, precom: 1.1, commis: 1.0, handover: 0.9 },
+    hazard: "brine creep · pressure at depth",
+  },
+  regolith: {
+    label: "SINTER & SEAL",
+    ground: "dead ash plain of unbonded fines",
+    load: "sinter the fines into a slab in place; there is nothing else to bear on",
+    builds: ["sintered slabs", "sealed galleries", "fines barriers"],
+    // Sealing is everything: the hazard is the ground itself getting inside.
+    weight: { site: 1.8, found: 1.6, struct: 0.8, mech: 0.8, rotate: 0.5,
+      pipe: 0.9, eni: 0.9, clad: 1.7, precom: 1.2, commis: 0.9, handover: 0.9 },
+    hazard: "fines ingress · no cohesion",
+  },
+  tidal: {
+    label: "CAISSON & BREAKWATER",
+    ground: "a drowned world — wet slate a metre under a global shallow sea",
+    load: "sunk caissons and rubble-mound breakwaters, placed between bores",
+    builds: ["harbour caissons", "breakwaters", "bore-proof revetments"],
+    // Civils dominate and the window is a tide table. Rotating equipment barely
+    // features: almost nothing here has a shaft in it.
+    weight: { site: 1.5, found: 2.0, struct: 1.3, mech: 0.8, rotate: 0.4,
+      pipe: 1.1, eni: 0.9, clad: 1.3, precom: 1.0, commis: 0.9, handover: 1.0 },
+    hazard: "bore arrival · scour at the toe",
+  },
+  shoal: {
+    label: "SAND SHELF & LANTERN TOWER",
+    ground: "wide sand shelf, spires standing in the lagoon",
+    load: "spread footings on the shelf, screw piles in the lagoon",
+    builds: ["lantern towers", "shelf causeways", "spire moorings"],
+    weight: { site: 1.3, found: 1.4, struct: 1.5, mech: 0.9, rotate: 0.6,
+      pipe: 1.0, eni: 1.3, clad: 0.9, precom: 1.0, commis: 1.0, handover: 1.1 },
+    hazard: "shelf liquefaction · spring range",
+  },
+  verdigris: {
+    label: "HEADLAND CUT & JADE MOORING",
+    ground: "dark headland rock falling into a jade sea",
+    load: "cut-and-anchor into the headland; moorings for everything below the line",
+    builds: ["headland galleries", "deep-water moorings", "jade roads"],
+    weight: { site: 1.1, found: 1.3, struct: 1.6, mech: 1.1, rotate: 0.8,
+      pipe: 1.2, eni: 1.1, clad: 1.0, precom: 1.0, commis: 1.0, handover: 1.0 },
+    hazard: "headland calving · deep-water access",
+  },
+  floe: {
+    label: "FLOATING PLATE & ICE ROAD",
+    ground: "an ice platform that is itself moving, cut by brine channels",
+    load: "distribute over the plate — concentrate load anywhere and it goes through",
+    builds: ["floating plate decks", "ice roads", "brine-channel crossings"],
+    // Nothing can be founded, because the ground is in motion. Structure carries
+    // everything and site prep is route-finding rather than earthworks.
+    weight: { site: 1.6, found: 0.5, struct: 2.1, mech: 1.0, rotate: 0.6,
+      pipe: 1.0, eni: 1.0, clad: 1.4, precom: 1.1, commis: 0.9, handover: 0.9 },
+    hazard: "plate breakup · channel opening",
+  },
+  kovir: {
+    label: "ROCK ANCHOR & BENCHED PASS",
+    ground: "stratified mineral rock under a conifer sea, bedding dipping with the slope",
+    // The engineering problem on an alpine world is not bearing — the rock will
+    // hold anything. It is *slope*: everything has to be cut into a face, and a
+    // cut that crosses the bedding at the wrong angle takes the face with it.
+    load: "rock-anchored into competent strata, benched square to the bedding",
+    builds: ["benched pass roads", "anchored cliff galleries", "avalanche sheds",
+      "timber-truss spans"],
+    // Site prep is the largest phase because the site is a mountainside and has
+    // to be benched before anything can stand on it; structure follows because a
+    // span over a valley is all structure; foundations are cheap because sound
+    // rock is the one thing this world gives away.
+    weight: { site: 2.1, found: 0.7, struct: 1.8, mech: 0.9, rotate: 0.6,
+      pipe: 0.8, eni: 0.9, clad: 1.3, precom: 1.0, commis: 0.9, handover: 1.1 },
+    hazard: "rockfall · avalanche path · bedding daylighted by the cut",
+  },
+};
+
+/**
+ * The style for a biome, with its weights normalised to average one. Normalising
+ * at read time rather than in the table means a style can be authored in plain
+ * "this matters more than that" terms without anyone having to make the numbers
+ * sum to something.
+ */
+const FAB_STYLE_CACHE = {};
+function fabStyle(biomeKey) {
+  let s = FAB_STYLE_CACHE[biomeKey];
+  if (s) return s;
+  const raw = FAB_STYLES[biomeKey] || FAB_STYLES.glacis;
+  let sum = 0, n = 0;
+  for (const id in raw.weight) { sum += raw.weight[id]; n++; }
+  const mean = n > 0 ? sum / n : 1;
+  const norm = {};
+  for (const id in raw.weight) norm[id] = raw.weight[id] / (mean || 1);
+  s = Object.assign({}, raw, { norm });
+  FAB_STYLE_CACHE[biomeKey] = s;
+  return s;
+}
 
 /**
  * Nine cells, six disciplines, two of the three heaviest doubled — which is what
@@ -15781,6 +17296,7 @@ const Works = {
 
   init(ctx) {
     this.ctx = ctx;
+    this.style = fabStyle(Biome.key);
     this.cells = CELL_ROSTER.map((r, i) => ({
       ...r, index: i, state: CELL_IDLE, item: null, progress: 0,
       done: 0, holdT: 0, holdWhy: "", idleT: 0,
@@ -15797,6 +17313,9 @@ const Works = {
   openRealm(plan) {
     this.realm = plan.realm;
     this.inhabited = !!plan.realm.inhabited;
+    // The style is resolved once per realm, not per phase: it is a property of the
+    // ground, and the ground does not change while a charter is open.
+    this.style = fabStyle(plan.realm.biome);
     this.queue.length = 0;
     this.records.length = 0;
     for (const c of this.cells) {
@@ -15807,10 +17326,11 @@ const Works = {
     this._holdSeed = (plan.index + 1) * 7919;
     this.emit("works-open",
       this.inhabited ? "NINE CELLS ON STATION" : "NO RESIDENT CELLS",
-      this.inhabited
+      (this.inhabited
         ? plan.realm.seat + " · " + SYSTEM_MANIFEST.agentCellsPerInhabitedBody
           + " AGENT CELLS · " + this.council.length + " COUNCIL SEATS"
-        : plan.realm.seat + " · MONITORED WORLD · AVATAR-CREWED FABRICATION");
+        : plan.realm.seat + " · MONITORED WORLD · AVATAR-CREWED")
+      + " · " + this.style.label);
   },
 
   /** Deterministic per-realm randomness, so a realm's holds are reproducible. */
@@ -15956,9 +17476,15 @@ const Works = {
    */
   _advance(item, delta, cell) {
     const before = item.progress;
-    item.progress = clamp01(item.progress + delta);
     const ph = FAB_PHASES[item.phaseIndex];
     const rec = item.rec;
+    // The world's fabrication style scales the work. A phase this ground does not
+    // support has a weight of zero and closes instantly — which is correct: there
+    // is no foundation to pour on a moving ice plate, so the cells queued behind
+    // that phase are released rather than held forever on work that cannot exist.
+    const w = this.style ? (this.style.norm[ph.id] === undefined ? 1
+      : this.style.norm[ph.id]) : 1;
+    item.progress = clamp01(item.progress + (w <= 0.001 ? 1 : delta / w));
 
     if (ph.forms && this.ctx && this.ctx.terrain && item.progress > before) {
       const d = this.ctx.terrain.deform;
@@ -17379,6 +18905,19 @@ async function main() {
   onChange("cityGlow", (v) => { structures.glow.value = v; conduits.glow.value = v; });
   structures.glow.value = conduits.glow.value = S.cityGlow;
 
+  await boot.phase("seeding the biosphere", 0.915);
+  const flora = new Flora(terrain, graph);
+  flora.setBiome(Biome.key);
+  flora.settle(controller.position.x, controller.position.z);
+  flora.setVisible(S.showFlora);
+  onChange("showFlora", (v) => flora.setVisible(!!v));
+  // Density changes the instance counts, so it rebuilds rather than scaling — and
+  // it is a discrete slider precisely because a per-frame rebuild is not one.
+  onChange("floraDensity", () => {
+    flora.setBiome(Biome.key);
+    flora.setVisible(S.showFlora);
+  });
+
   rig.groundAt = (x, z) => terrain.heightAt(x, z);
   let post = null;
   post = new PostChain(renderer, rig, sky);
@@ -17429,7 +18968,9 @@ async function main() {
    * outright when the two biomes share a regime, which is most pairs among the
    * original six — so the common case is still a pure dissolve with no hitch.
    */
-  let liveRegime = (BIOMES[Biome.key].regime || [0, 0, 0, 0]).join(",");
+  const regimeKey = (k) => ((BIOMES[k].regime || [0, 0, 0, 0])
+    .concat(BIOMES[k].alpine || [0, 0])).join(",");
+  let liveRegime = regimeKey(Biome.key);
   function snapToBed() {
     controller.position.y = terrain.heightAt(controller.position.x, controller.position.z);
     suit.position.y = terrain.heightAt(suit.position.x, suit.position.z);
@@ -17438,7 +18979,7 @@ async function main() {
     if (!BIOMES[key]) return;
     Biome.select(key);
     S.biome = key;
-    const want = (BIOMES[key].regime || [0, 0, 0, 0]).join(",");
+    const want = regimeKey(key);
     if (want !== liveRegime) {
       terrain.rebake(key);
       sea.rebind();
@@ -17449,6 +18990,11 @@ async function main() {
       structures.reseat(terrain);
     }
     Ocean.select(key);
+    // What grows is a property of the world, so it is rebuilt with the world and
+    // not lerped: a jade sea's canopy standing on an ash plain for a second is a
+    // lie the dissolve would tell for free.
+    flora.setBiome(key);
+    flora.setVisible(S.showFlora);
     if (S.suitLivery === "auto") suitRender.setLivery("auto");
     overlay.syncEnum("biome");
   }
@@ -17547,6 +19093,7 @@ async function main() {
     Ocean.update(1 / 60, controller, suit, spray, rig);
     waterRig.update(1 / 60, rig, controller, spray);
     sea.update(camera.position);
+    flora.update(1 / 60, controller);
     wake.update(1 / 60);
     spray.update(1 / 60, camera, terrain);
     spells.update(1 / 60);
@@ -17756,6 +19303,9 @@ async function main() {
     sea.update(camera.position);
     structures.update(dt);
     conduits.update();
+    // After the terrain clipmap and the sea: a reseat samples the height mirror
+    // and the water depth, and both are this frame's as of the two calls above.
+    if (S.showFlora) flora.update(dt, controller);
     const tTerrain = performance.now();
     charRender.sync();
     suitRender.sync();
@@ -17805,8 +19355,9 @@ async function main() {
     Ocean, sea, waterRig, applyBiome, SUIT_LIVERY, BINDINGS, latch, pollGamepad,
     Medium, MEDIA, BIOME_MEDIUM, traversalCaps, capsForBiome, BIOME_REALM, MOON_SET,
     structures, conduits, pilot, director, ledger, REALMS, SYSTEM_MANIFEST,
-    Works, FAB_PHASES, CELL_ROSTER, COUNCIL_SEATS,
+    Works, FAB_PHASES, FAB_STYLES, fabStyle, CELL_ROSTER, COUNCIL_SEATS,
     ObjectSculptSpec, NexusIterationSpec, planRealm,
+    flora, BIOME_FLORA,
     start() {
       if (runtimeDisposed || runtimeActive) return;
       runtimeActive = true; prev = performance.now(); requestAnimationFrame(frame);
