@@ -776,7 +776,7 @@ const S = {
   showWorldDressing: true,
   // flora & ambient life
   showFlora: true, floraDensity: 1.0, showDrift: true, showFliers: true,
-  showSettlement: true,
+  showSettlement: true, showCrew: true,
   // spells
   showSpells: true, spellLight: 1.0, spellSpray: 1.0, waterDepthTint: 1.0,
   // post
@@ -899,6 +899,7 @@ const SCHEMA = [
     { k: "showDrift", l: "Airborne drift", t: "b" },
     { k: "showFliers", l: "Flocks", t: "b" },
     { k: "showSettlement", l: "Settlement dressing", t: "b" },
+    { k: "showCrew", l: "Agent cell crew", t: "b" },
   ] },
   { group: "False Earth", items: [
     { k: "showPlanet", l: "Planet", t: "b" },
@@ -20098,6 +20099,422 @@ function hazardClauses(style) {
 }
 
 /* =========================================================================
+ * THE CREW — bodies for the canonical cells.
+ *
+ * The works simulate nine named cells per inhabited world: each one claims a
+ * phase, works it, gets held, starves behind the phase in front, rests. All of
+ * that was in the ledger and none of it was in the world, so a district under
+ * fabrication looked exactly like a district nobody was working on.
+ *
+ * This puts a body on every cell, and the body is a FUNCTION of the simulation
+ * rather than a decoration beside it:
+ *
+ *   WORKING   the figure walks to the mass whose phase it claimed and works at
+ *             the face of it — so the crowd around a structure is the crowd the
+ *             queue says is there, and it thins as phases close.
+ *   HELD      it steps back from the face and stands with its arms down. A held
+ *             cell is visibly not working, which is the whole point of the state.
+ *   STARVED   it walks back to the muster point at the seat. A wall of figures
+ *             standing at the seat while masses go unbuilt IS the bottleneck the
+ *             ledger reports, drawn.
+ *   IDLE      at the muster point, standing easy.
+ *
+ * Nothing here decides anything. The crew reads `Works.cells` and moves; if the
+ * simulation says a cell is held, the body is held, and there is no path by which
+ * the body could disagree with the row. That is the difference between an NPC and
+ * an ambient prop, and it is why this belongs downstream of the authoritative tick
+ * rather than in the render layer with the flocks.
+ *
+ * One figure is about 240 triangles and there are at most nine, so the whole crew
+ * is one instanced draw and costs less than a single tree.
+ * ========================================================================= */
+
+/** Part ids, matched by the vertex shader to decide what pivots about what. */
+const CP_TORSO = 0, CP_HEAD = 1, CP_ARM_L = 2, CP_ARM_R = 3,
+      CP_LEG_L = 4, CP_LEG_R = 5, CP_BAND = 6, CP_KIT = 7;
+
+/** Hi-viz band per discipline, so the trade is readable at a glance. */
+const DISC_COLOUR = {
+  civil: "#d8a33a", struct: "#4f8fd8", mech: "#d8642f",
+  piping: "#48b58a", eni: "#c85fd0", qa: "#e0e4ea",
+};
+
+const CREW_VERT = G.head + `
+in vec3 position;
+in vec3 normal;
+in vec3 aVertCol;
+in float aPart;
+in vec3 aBase;      // world position of the feet
+in vec4 aParam;     // (facing yaw, gait phase, work phase, state 0..3)
+in vec3 aTint;
+in vec3 aBand;      // discipline colour, applied to the band part only
+uniform mat4 projectionMatrix;
+uniform mat4 viewMatrix;
+uniform float uClock;
+out vec3 vWorld;
+out vec3 vNormal;
+out vec3 vCol;
+out float vEmis;
+
+/** Rotate about the X axis at a pivot height — the only joint a figure this size
+ *  needs, because a shoulder and a hip both swing in the sagittal plane. */
+void swing(inout vec3 p, inout vec3 n, float pivotY, float ang){
+  float c = cos(ang), s = sin(ang);
+  float y = p.y - pivotY, z = p.z;
+  p.y = pivotY + y * c - z * s;
+  p.z = y * s + z * c;
+  float ny = n.y, nz = n.z;
+  n.y = ny * c - nz * s;
+  n.z = ny * s + nz * c;
+}
+
+void main(){
+  vec3 p = position;
+  vec3 n = normal;
+  float yaw = aParam.x, gait = aParam.y, work = aParam.z, state = aParam.w;
+  int part = int(aPart + 0.5);
+
+  // Gait amplitude falls to zero when the figure is standing, so a stationary
+  // crew is still rather than marching on the spot — which is the single most
+  // common tell in a crowd system.
+  float stride = clamp(aParam.y == 0.0 ? 0.0 : 1.0, 0.0, 1.0);
+  float legA = sin(gait) * 0.62 * stride;
+  float armA = -sin(gait) * 0.42 * stride;
+
+  // The work stroke. Only the leading arm moves, only while WORKING, and it is a
+  // short reach rather than a swing: at this scale an arm windmilling reads as
+  // waving, and a crew that waves at a structure is not building it.
+  float working = state < 0.5 ? 0.0 : (state < 1.5 ? 1.0 : 0.0);
+  float stroke = working * (0.55 + 0.45 * sin(work)) * 0.9;
+  // Held: arms down, and a slight slump. A body language cue is worth more than a
+  // marker here, because it reads without having to be looked up.
+  float held = state > 1.5 && state < 2.5 ? 1.0 : 0.0;
+
+  if (part == 4) swing(p, n, 0.86, legA);
+  else if (part == 5) swing(p, n, 0.86, -legA);
+  else if (part == 2) swing(p, n, 1.38, armA - stroke - held * 0.25);
+  else if (part == 3) swing(p, n, 1.38, -armA - held * 0.25);
+  else if (part == 0 || part == 6) {
+    // The torso leans into the work and slumps when held.
+    swing(p, n, 0.86, working * 0.16 + held * 0.10);
+  } else if (part == 1) {
+    swing(p, n, 0.86, working * 0.22 + held * 0.20);
+  } else if (part == 7) {
+    // Kit rides on the leading hand, so it tracks the stroke.
+    swing(p, n, 1.38, armA - stroke - held * 0.25);
+  }
+
+  // Bob with the stride: the hips rise on each step. Without it a walk is a slide.
+  p.y += abs(sin(gait)) * 0.045 * stride;
+
+  float c = cos(yaw), s = sin(yaw);
+  vec3 w = vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c) + aBase;
+  vNormal = normalize(vec3(n.x * c + n.z * s, n.y, -n.x * s + n.z * c));
+  vWorld = w;
+  vCol = (part == 6 ? aBand : aVertCol) * aTint;
+  // The band is retroreflective, which is what a hi-viz band IS — so it carries a
+  // little emission and stays readable at dusk, when a crew most needs to be.
+  vEmis = part == 6 ? 1.0 : 0.0;
+  gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
+}
+`;
+
+const CREW_FRAG = G.head + G.noise + G.shading + G.atmosphere + G.ocean + `
+in vec3 vWorld;
+in vec3 vNormal;
+in vec3 vCol;
+in float vEmis;
+out vec4 fragColor;
+uniform vec3 uCamPos;
+uniform vec3 uSunDir;
+uniform vec3 uSunRadiance;
+uniform vec3 uSH[9];
+uniform float uAmbient;
+uniform float uFogDensity;
+uniform float uFogHeight;
+uniform float uFogStart;
+uniform float uAerial;
+uniform sampler2D uSkyLUT;
+void main(){
+  vec3 N = normalize(vNormal);
+  vec3 L = uSunDir;
+  vec3 V = normalize(uCamPos - vWorld);
+  float lit = wrapDiffuse(dot(N, L), 0.32);
+  vec3 col = vCol * uSunRadiance * 0.31830988618 * lit;
+  col += vCol * shIrradiance(N, uSH) * uAmbient * 0.31830988618;
+  float spec = pow(max(dot(N, normalize(L + V)), 0.0), 30.0);
+  col += uSunRadiance * spec * 0.05;
+  col += vCol * vEmis * 0.55;
+  col = waterColumn(col, vWorld, uCamPos, uClock);
+  col = applyAerial(col, uCamPos, vWorld, -V, L, uSkyLUT, uSunRadiance,
+                    uFogDensity, uFogHeight, uFogStart, uAerial);
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+class CrewField {
+  constructor(terrain, graph) {
+    this.terrain = terrain;
+    this.graph = graph;
+    this.layer = null;
+    /** One record per cell, in `Works.cells` order. */
+    this.bodies = [];
+    this.muster = { x: 0, z: 0 };
+    this._built = 0;
+  }
+
+  /**
+   * A humanoid, built once and instanced.
+   *
+   * Boxes and capsules rather than anything sculpted, deliberately: at the range a
+   * crew is seen from — across an apron, from a spring arm eight metres behind the
+   * player — silhouette and colour are the whole read, and a detailed figure would
+   * cost geometry to deliver detail nobody can resolve. What DOES read is the
+   * hi-viz band, the helmet, and whether the arms are moving.
+   */
+  _geometry() {
+    const parts = [];
+    const push = (g, hex, part) => parts.push({ g, c: new THREE.Color(hex), part });
+    // torso
+    const torso = new THREE.BoxGeometry(0.40, 0.56, 0.24);
+    torso.translate(0, 1.14, 0);
+    push(torso, "#2c3340", CP_TORSO);
+    // hi-viz band across the chest
+    const band = new THREE.BoxGeometry(0.425, 0.13, 0.265);
+    band.translate(0, 1.16, 0);
+    push(band, "#ffffff", CP_BAND);
+    // hips
+    const hips = new THREE.BoxGeometry(0.36, 0.20, 0.23);
+    hips.translate(0, 0.80, 0);
+    push(hips, "#232833", CP_TORSO);
+    // head and helmet
+    const head = new THREE.BoxGeometry(0.19, 0.21, 0.19);
+    head.translate(0, 1.55, 0);
+    push(head, "#b08b6a", CP_HEAD);
+    const helm = new THREE.SphereGeometry(0.135, 8, 5, 0, Math.PI * 2, 0, Math.PI * 0.55);
+    helm.scale(1, 0.85, 1.05);
+    helm.translate(0, 1.60, 0);
+    push(helm, "#e8c14a", CP_HEAD);
+    // arms — a box each, hanging from the shoulder pivot at y = 1.38
+    for (const [sgn, part] of [[-1, CP_ARM_L], [1, CP_ARM_R]]) {
+      const arm = new THREE.BoxGeometry(0.115, 0.52, 0.115);
+      arm.translate(sgn * 0.255, 1.12, 0);
+      push(arm, "#2c3340", part);
+      const hand = new THREE.BoxGeometry(0.10, 0.11, 0.10);
+      hand.translate(sgn * 0.255, 0.83, 0);
+      push(hand, "#b08b6a", part);
+    }
+    // legs, from the hip pivot at y = 0.86
+    for (const [sgn, part] of [[-1, CP_LEG_L], [1, CP_LEG_R]]) {
+      const leg = new THREE.BoxGeometry(0.145, 0.72, 0.145);
+      leg.translate(sgn * 0.105, 0.44, 0);
+      push(leg, "#1d222c", part);
+      const boot = new THREE.BoxGeometry(0.16, 0.11, 0.24);
+      boot.translate(sgn * 0.105, 0.055, 0.035);
+      push(boot, "#14181f", part);
+    }
+    // A tool on the leading hand. It is what makes the work stroke legible: an arm
+    // reaching at a wall is ambiguous, an arm reaching with a bar in it is not.
+    const kit = new THREE.BoxGeometry(0.055, 0.055, 0.46);
+    kit.translate(-0.255, 0.83, 0.19);
+    push(kit, "#8f9299", CP_KIT);
+
+    let vc = 0, ic = 0;
+    for (const p of parts) {
+      vc += p.g.attributes.position.count;
+      ic += p.g.index ? p.g.index.count : p.g.attributes.position.count;
+    }
+    const pos = new Float32Array(vc * 3), nrm = new Float32Array(vc * 3);
+    const col = new Float32Array(vc * 3), prt = new Float32Array(vc);
+    const idx = new Uint32Array(ic);
+    let vo = 0, io = 0;
+    for (const p of parts) {
+      const gp = p.g.attributes.position, gn = p.g.attributes.normal;
+      for (let i = 0; i < gp.count; i++) {
+        const o = (vo + i) * 3;
+        pos[o] = gp.getX(i); pos[o + 1] = gp.getY(i); pos[o + 2] = gp.getZ(i);
+        nrm[o] = gn.getX(i); nrm[o + 1] = gn.getY(i); nrm[o + 2] = gn.getZ(i);
+        col[o] = p.c.r; col[o + 1] = p.c.g; col[o + 2] = p.c.b;
+        prt[vo + i] = p.part;
+      }
+      const gi = p.g.index;
+      for (let i = 0; i < (gi ? gi.count : gp.count); i++) {
+        idx[io + i] = (gi ? gi.getX(i) : i) + vo;
+      }
+      io += gi ? gi.count : gp.count;
+      vo += gp.count;
+      p.g.dispose();
+    }
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
+    geo.setAttribute("aVertCol", new THREE.BufferAttribute(col, 3));
+    geo.setAttribute("aPart", new THREE.BufferAttribute(prt, 1));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    return geo;
+  }
+
+  /**
+   * Build bodies for the crew of the realm being opened.
+   *
+   * Rebuilt per realm rather than reset, for the same reason the cells are: the
+   * nine on the alpine pass are different people from the nine on the dune sea.
+   */
+  setRealm(plan) {
+    this.dispose();
+    const cells = Works.cells;
+    if (!cells.length || S.showCrew === false) return;
+    this.muster = plan && plan.seat ? { x: plan.seat.x, z: plan.seat.z } : { x: 0, z: 0 };
+    const n = cells.length;
+    const geo = this._geometry();
+    const data = {
+      base: new Float32Array(n * 3), param: new Float32Array(n * 4),
+      tint: new Float32Array(n * 3), band: new Float32Array(n * 3), count: n,
+    };
+    geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(data.base, 3));
+    geo.setAttribute("aParam", new THREE.InstancedBufferAttribute(data.param, 4));
+    geo.setAttribute("aTint", new THREE.InstancedBufferAttribute(data.tint, 3));
+    geo.setAttribute("aBand", new THREE.InstancedBufferAttribute(data.band, 3));
+    geo.instanceCount = n;
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
+
+    const mat = new THREE.RawShaderMaterial({
+      glslVersion: THREE.GLSL3,
+      vertexShader: CREW_VERT, fragmentShader: CREW_FRAG,
+      uniforms: shared("uCamPos", "uSunDir", "uSunRadiance", "uSH", "uSkyLUT",
+        "uAmbient", "uFogDensity", "uFogHeight", "uFogStart", "uAerial"),
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.frustumCulled = false;
+    this.layer = { mesh, material: mat, data,
+      item: this.graph.add({ mesh, beauty: mat }) };
+
+    const band = new THREE.Color();
+    this.bodies = cells.map((c, i) => {
+      // Muster in a ring so nine figures at the seat are a crew rather than a
+      // stack, and give each one a fixed slot so it returns to the same spot.
+      const a = (i / n) * PI2;
+      const mx = this.muster.x + Math.cos(a) * 4.2;
+      const mz = this.muster.z + Math.sin(a) * 4.2;
+      band.set(DISC_COLOUR[c.disc] || "#e0e4ea");
+      const o3 = i * 3;
+      data.band[o3] = band.r; data.band[o3 + 1] = band.g; data.band[o3 + 2] = band.b;
+      // A little variety in build, so nine identical boxes are not nine clones.
+      const t = 0.88 + hash1(i * 7.7 + 3) * 0.22;
+      data.tint[o3] = t; data.tint[o3 + 1] = t; data.tint[o3 + 2] = t;
+      return {
+        cell: c, slot: i,
+        x: mx, z: mz, y: this.terrain.heightAt(mx, mz),
+        homeX: mx, homeZ: mz,
+        yaw: a + Math.PI, gait: 0, work: hash1(i * 3.1) * PI2,
+        speed: 0,
+      };
+    });
+    for (const k of ["aBand", "aTint"]) {
+      geo.attributes[k].needsUpdate = true;
+    }
+    this._built++;
+  }
+
+  /** Where this cell should be standing, given what it is doing. */
+  _target(b) {
+    const c = b.cell;
+    const item = c.item;
+    if ((c.state === CELL_WORKING || c.state === CELL_HOLD) && item && item.rec) {
+      const rec = item.rec;
+      // Stand at the face, on a per-cell bearing so nine cells on one mass are
+      // spread around it rather than inside each other. A held cell steps back.
+      const a = (b.slot / 9) * PI2 + 0.7;
+      const r = (rec.spec ? rec.spec.footprint * 0.6 + 2.2 : 3.0)
+        + (c.state === CELL_HOLD ? 3.4 : 0);
+      return { x: rec.x + Math.cos(a) * r, z: rec.z + Math.sin(a) * r,
+        faceX: rec.x, faceZ: rec.z };
+    }
+    // Starved and idle both muster at the seat. That is deliberate: a wall of
+    // figures standing at the seat while masses go unbuilt is the bottleneck the
+    // ledger reports, drawn at world scale.
+    return { x: b.homeX, z: b.homeZ, faceX: this.muster.x, faceZ: this.muster.z };
+  }
+
+  update(dt) {
+    if (!this.layer || !this.bodies.length) return;
+    const d = this.layer.data;
+    // Cells can be rebuilt under us on a realm change; the bodies follow.
+    if (this.bodies.length !== Works.cells.length) return;
+    for (let i = 0; i < this.bodies.length; i++) {
+      const b = this.bodies[i];
+      b.cell = Works.cells[i];
+      const t = this._target(b);
+      const dx = t.x - b.x, dz = t.z - b.z;
+      const dist = Math.hypot(dx, dz);
+      // Walk if there is anywhere to be. 1.5 m/s is a working pace — a crew that
+      // sprints between faces reads as panic, and one that ambles reads as idle.
+      const WALK = 1.5;
+      if (dist > 0.35) {
+        const step = Math.min(dist, WALK * dt);
+        b.x += (dx / dist) * step;
+        b.z += (dz / dist) * step;
+        b.speed = WALK;
+        // Gait phase advances with DISTANCE, not time, so the feet land where the
+        // figure actually is instead of skating.
+        b.gait += (step / 0.72) * Math.PI;
+        b.yaw = Math.atan2(dx, dz);
+      } else {
+        b.speed = 0;
+        // Snap the phase to zero so the shader's stride term switches the walk
+        // off cleanly rather than freezing mid-step.
+        b.gait = 0;
+        // Face the work.
+        const fx = t.faceX - b.x, fz = t.faceZ - b.z;
+        if (fx * fx + fz * fz > 1e-4) {
+          b.yaw = angleDamp(b.yaw, Math.atan2(fx, fz), 6, dt);
+        }
+      }
+      b.y = this.terrain.heightAt(b.x, b.z);
+      // The work stroke runs off the cell's own rate, so a fast trade visibly
+      // works faster and a fatigued one visibly slows. The animation is reading
+      // the same number the phase clock is.
+      if (b.cell.state === CELL_WORKING) {
+        b.work += dt * (5.0 + b.cell.rate * 40) * Works.condition(b.cell);
+      }
+      const o3 = i * 3, o4 = i * 4;
+      d.base[o3] = b.x; d.base[o3 + 1] = b.y; d.base[o3 + 2] = b.z;
+      d.param[o4] = b.yaw;
+      d.param[o4 + 1] = b.speed > 0 ? b.gait : 0;
+      d.param[o4 + 2] = b.work;
+      d.param[o4 + 3] = b.cell.state;
+    }
+    this.layer.mesh.geometry.attributes.aBase.needsUpdate = true;
+    this.layer.mesh.geometry.attributes.aParam.needsUpdate = true;
+  }
+
+  setVisible(v) { if (this.layer) this.layer.item.visible = v; }
+
+  /** For the inspector: who is where, and doing what. */
+  report() {
+    return this.bodies.map((b) => ({
+      id: b.cell.id, call: b.cell.call, disc: b.cell.disc,
+      state: ["IDLE", "WORKING", "HOLD", "STARVED"][b.cell.state] || "?",
+      at: [+b.x.toFixed(1), +b.z.toFixed(1)],
+      walking: b.speed > 0,
+      mass: b.cell.item && b.cell.item.rec ? b.cell.item.rec.label : "",
+    }));
+  }
+
+  dispose() {
+    if (this.layer) {
+      const i = this.graph.items.indexOf(this.layer.item);
+      if (i >= 0) this.graph.items.splice(i, 1);
+      this.graph.scene.remove(this.layer.mesh);
+      this.layer.mesh.geometry.dispose();
+      this.layer.material.dispose();
+    }
+    this.layer = null;
+    this.bodies = [];
+  }
+}
+
+/* =========================================================================
  * THE PILOT — the autonomous walker.
  *
  * The pilot does not move the character. It fills in the same `input` struct a
@@ -21503,6 +21920,11 @@ async function main() {
   // it is a discrete slider precisely because a per-frame rebuild is not one.
   const settlement = new Settlement(terrain, graph);
   onChange("showSettlement", (v) => settlement.setVisible(!!v));
+  const crew = new CrewField(terrain, graph);
+  onChange("showCrew", (v) => {
+    if (v && pilotRef && pilotRef.plan) { crew.setRealm(pilotRef.plan); }
+    crew.setVisible(!!v);
+  });
   onChange("floraDensity", () => {
     flora.setBiome(Biome.key);
     flora.settle(controller.position.x, controller.position.z);
@@ -21521,6 +21943,11 @@ async function main() {
     settlement.setRealm(plan.realm.biome, plan.districts,
       BIOMES[plan.realm.biome].accent);
     settlement.setVisible(S.showSettlement);
+    // The crew is built AFTER Works.openRealm has bound the cells, which the
+    // pilot guarantees by calling this from inside openRealm — the bodies are one
+    // per cell and there are no cells to embody until then.
+    crew.setRealm(plan);
+    crew.setVisible(S.showCrew);
   }
 
   rig.groundAt = (x, z) => terrain.heightAt(x, z);
@@ -21713,6 +22140,7 @@ async function main() {
     flora.update(1 / 60, controller);
     ambient.update(1 / 60, controller, camera);
     settlement.update(1 / 60);
+    crew.update(1 / 60);
     wake.update(1 / 60);
     spray.update(1 / 60, camera, terrain);
     spells.update(1 / 60);
@@ -21865,6 +22293,10 @@ async function main() {
       // The cells fabricate after the pilot has founded whatever it founded this
       // tick, so a mass handed over now is already on the books.
       Works.update(fixed, S.buildRate);
+      // And the bodies move to whatever the cells just decided. On the fixed tick
+      // rather than the frame, because a figure's position is a function of the
+      // simulation and running it at render rate would let the two disagree.
+      if (S.showCrew) crew.update(fixed);
     });
     director.update(dt);
 
@@ -22026,7 +22458,7 @@ async function main() {
     Audit, HOLD_BY_DISC, hazardClauses,
     ObjectSculptSpec, NexusIterationSpec, planRealm,
     flora, BIOME_FLORA, ambient, BIOME_DRIFT, BIOME_FLIERS,
-    settlement, BIOME_KIT, dressRealm,
+    settlement, BIOME_KIT, dressRealm, crew, DISC_COLOUR,
     start() {
       if (runtimeDisposed || runtimeActive) return;
       runtimeActive = true; prev = performance.now(); requestAnimationFrame(frame);
