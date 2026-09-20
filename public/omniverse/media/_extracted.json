@@ -1,0 +1,168 @@
+[
+  {
+    "kind": "module",
+    "spec": "three",
+    "file": "modules/three.module.js",
+    "bytes": 1272972,
+    "sha256": "76dea8151bc9352a",
+    "head": "/**  * @license  * Copyright 2010-2023 Three.js Authors  * SPDX-License-Identifier: MIT  */ const REVISION = '160';  con"
+  },
+  {
+    "kind": "module",
+    "spec": "three/addons/postprocessing/EffectComposer.js",
+    "file": "modules/EffectComposer.js",
+    "bytes": 4739,
+    "sha256": "298725adf1e1d7cb",
+    "head": "import { \tClock, \tHalfFloatType, \tNoBlending, \tVector2, \tWebGLRenderTarget } from 'three'; import { CopyShader } from 't"
+  },
+  {
+    "kind": "module",
+    "spec": "three/addons/postprocessing/RenderPass.js",
+    "file": "modules/RenderPass.js",
+    "bytes": 1941,
+    "sha256": "50274edaa2e63592",
+    "head": "import { \tColor } from 'three'; import { Pass } from 'three/addons/postprocessing/Pass.js';  class RenderPass extends Pa"
+  },
+  {
+    "kind": "module",
+    "spec": "three/addons/postprocessing/ShaderPass.js",
+    "file": "modules/ShaderPass.js",
+    "bytes": 1602,
+    "sha256": "e7bf58aac8d170b2",
+    "head": "import { \tShaderMaterial, \tUniformsUtils } from 'three'; import { Pass, FullScreenQuad } from 'three/addons/postprocessi"
+  },
+  {
+    "kind": "module",
+    "spec": "three/addons/postprocessing/Pass.js",
+    "file": "modules/Pass.js",
+    "bytes": 1706,
+    "sha256": "b3c6128340eaa37e",
+    "head": "import { \tBufferGeometry, \tFloat32BufferAttribute, \tOrthographicCamera, \tMesh } from 'three';  class Pass {  \tconstructo"
+  },
+  {
+    "kind": "module",
+    "spec": "three/addons/postprocessing/MaskPass.js",
+    "file": "modules/MaskPass.js",
+    "bytes": 2257,
+    "sha256": "92608c069051c27e",
+    "head": "import { Pass } from 'three/addons/postprocessing/Pass.js';  class MaskPass extends Pass {  \tconstructor( scene, camera "
+  },
+  {
+    "kind": "module",
+    "spec": "three/addons/shaders/CopyShader.js",
+    "file": "modules/CopyShader.js",
+    "bytes": 571,
+    "sha256": "4e3346db194db56a",
+    "head": "/**  * Full-screen textured quad shader  */  const CopyShader = {  \tname: 'CopyShader',  \tuniforms: {  \t\t'tDiffuse': { v"
+  },
+  {
+    "kind": "jpeg",
+    "file": "media/loqi-img-01.jpg",
+    "line": 6008,
+    "bytes": 355582,
+    "w": 1179,
+    "h": 2322,
+    "sha256": "a94400c57f4505e7",
+    "before": " Way</span><span>K2‑18 b</span> </div> </div> <div class=\"wrap oceanFrames\"> <article class=\"oceanFrame rv\"> <div class=\"oceanImg\" style=\"background-image:url('",
+    "after": "')\"></div> <div class=\"oceanBadge\">MAXIMUM ZOOM-OUT</div> <div class=\"oceanCopy\"> <div class=\"eyebrow\">01 · Galactic sca"
+  },
+  {
+    "kind": "jpeg",
+    "file": "media/loqi-img-02.jpg",
+    "line": 6017,
+    "bytes": 299397,
+    "w": 1179,
+    "h": 2303,
+    "sha256": "ac32b00ad4b649f4",
+    "before": "heart and the spiral arms opening outward like petals.</p> </div> </article> <article class=\"oceanFrame rv\"> <div class=\"oceanImg\" style=\"background-image:url('",
+    "after": "')\"></div> <div class=\"oceanBadge\">SOL</div> <div class=\"oceanCopy\"> <div class=\"eyebrow\">02 · Stellar heart</div> <h3>S"
+  },
+  {
+    "kind": "jpeg",
+    "file": "media/loqi-img-03.jpg",
+    "line": 6026,
+    "bytes": 240105,
+    "w": 1179,
+    "h": 2296,
+    "sha256": "235fb76aa76e1789",
+    "before": "d which the worlds of our system trace their currents.</p> </div> </article> <article class=\"oceanFrame rv\"> <div class=\"oceanImg\" style=\"background-image:url('",
+    "after": "')\"></div> <div class=\"oceanBadge\">GAS GIANT</div> <div class=\"oceanCopy\"> <div class=\"eyebrow\">03 · Giant world</div> <"
+  },
+  {
+    "kind": "jpeg",
+    "file": "media/loqi-img-04.jpg",
+    "line": 6035,
+    "bytes": 309585,
+    "w": 1179,
+    "h": 2169,
+    "sha256": "e9de9de8dc485944",
+    "before": " our Solar System and a major gravitational architect.</p> </div> </article> <article class=\"oceanFrame rv\"> <div class=\"oceanImg\" style=\"background-image:url('",
+    "after": "')\"></div> <div class=\"oceanBadge\">OUTER SYSTEM</div> <div class=\"oceanCopy\"> <div class=\"eyebrow\">04 · Rings + stone</d"
+  },
+  {
+    "kind": "jpeg",
+    "file": "media/loqi-img-05.jpg",
+    "line": 6044,
+    "bytes": 208603,
+    "w": 1179,
+    "h": 2296,
+    "sha256": "828419514bedf1ff",
+    "before": "stone and dust flowing toward the ringed outer worlds.</p> </div> </article> <article class=\"oceanFrame rv\"> <div class=\"oceanImg\" style=\"background-image:url('",
+    "after": "')\"></div> <div class=\"oceanBadge\">INTERSTELLAR</div> <div class=\"oceanCopy\"> <div class=\"eyebrow\">05 · Planetary passag"
+  },
+  {
+    "kind": "jpeg",
+    "file": "media/loqi-img-06.jpg",
+    "line": 6053,
+    "bytes": 313906,
+    "w": 1179,
+    "h": 2290,
+    "sha256": "0b8bb4b8de6f27e1",
+    "before": " become islands inside a much larger interstellar sea.</p> </div> </article> <article class=\"oceanFrame rv\"> <div class=\"oceanImg\" style=\"background-image:url('",
+    "after": "')\"></div> <div class=\"oceanBadge\">COSMIC OCEAN</div> <div class=\"oceanCopy\"> <div class=\"eyebrow\">06 · Ocean + cosmos</"
+  },
+  {
+    "kind": "jpeg",
+    "file": "media/loqi-img-07.jpg",
+    "line": 6062,
+    "bytes": 312154,
+    "w": 1179,
+    "h": 2300,
+    "sha256": "9ffbf2d07f65fbb2",
+    "before": "between an earthly ocean and the greater cosmic field.</p> </div> </article> <article class=\"oceanFrame rv\"> <div class=\"oceanImg\" style=\"background-image:url('",
+    "after": "')\"></div> <div class=\"oceanBadge\">WATER WORLD</div> <div class=\"oceanCopy\"> <div class=\"eyebrow\">07 · Water horizon</di"
+  },
+  {
+    "kind": "jpeg",
+    "file": "media/loqi-img-08.jpg",
+    "line": 6071,
+    "bytes": 178783,
+    "w": 1179,
+    "h": 2287,
+    "sha256": "3a66a247c5cc8c34",
+    "before": "osmic ocean are two scales of the same visual journey.</p> </div> </article> <article class=\"oceanFrame rv\"> <div class=\"oceanImg\" style=\"background-image:url('",
+    "after": "')\"></div> <div class=\"oceanBadge\">DESCENT</div> <div class=\"oceanCopy\"> <div class=\"eyebrow\">08 · Immersion</div> <h3>T"
+  },
+  {
+    "kind": "jpeg",
+    "file": "media/loqi-img-09.jpg",
+    "line": 6080,
+    "bytes": 271615,
+    "w": 1179,
+    "h": 2178,
+    "sha256": "a4297d3e955939f0",
+    "before": "lf — a fluid portal from the galactic view into depth.</p> </div> </article> <article class=\"oceanFrame rv\"> <div class=\"oceanImg\" style=\"background-image:url('",
+    "after": "')\"></div> <div class=\"oceanBadge\">NESTED SCALE</div> <div class=\"oceanCopy\"> <div class=\"eyebrow\">09 · Worlds within wo"
+  },
+  {
+    "kind": "jpeg",
+    "file": "media/loqi-img-10.jpg",
+    "line": 6089,
+    "bytes": 313906,
+    "w": 1179,
+    "h": 2290,
+    "sha256": "0b8bb4b8de6f27e1",
+    "before": "ch scale can contain a reflection of the larger whole.</p> </div> </article> <article class=\"oceanFrame rv\"> <div class=\"oceanImg\" style=\"background-image:url('",
+    "after": "')\"></div> <div class=\"oceanBadge\">K2‑18 b</div> <div class=\"oceanCopy\"> <div class=\"eyebrow\">10 · Exoplanet reference</"
+  }
+]
